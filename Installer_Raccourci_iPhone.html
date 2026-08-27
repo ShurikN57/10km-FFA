@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Raccourci iPhone — Importer vers Comparateur</title>
+<style>
+body{font-family:system-ui;background:#0f1115;color:#fff;margin:0;padding:20px}
+.wrap{max-width:760px;margin:auto}.card{background:#171a21;padding:18px;border-radius:14px;margin:14px 0}
+button{width:100%;padding:15px;border:0;border-radius:10px;font-weight:800;font-size:17px;background:#c0392b;color:white}
+textarea{width:100%;height:180px;box-sizing:border-box;background:#0e1014;color:#fff;border:1px solid #3a3f49;border-radius:10px;padding:10px;font-size:12px}
+li{margin:10px 0;line-height:1.35}
+</style></head><body><div class="wrap">
+<h1>Importer vers Comparateur — iPhone</h1>
+<div class="card">
+<button id="copy">Copier le script du raccourci</button>
+<p id="msg"></p>
+<textarea id="code" readonly>(async()=&gt;{
+const TARGET=&#x27;https://shurikn57.github.io/10km-FFA/&#x27;;
+const C=s=&gt;(s||&#x27;&#x27;).replace(/\s+/g,&#x27; &#x27;).trim();
+const uniq=a=&gt;{const m=new Map();for(const x of a){if(!x||!x.name)continue;const k=[x.rank,x.name,x.time].join(&#x27;|&#x27;);if(!m.has(k))m.set(k,x)}return[...m.values()]};
+
+function utmbText(doc){
+  const lines=(doc.body?.innerText||&#x27;&#x27;).split(/\n+/).map(C).filter(Boolean);
+  const out=[];
+  for(let i=0;i&lt;lines.length-6;i++){
+    if(!/^\d{1,5}$/.test(lines[i])) continue;
+    if(!/^\d{1,2}:\d{2}:\d{2}$/.test(lines[i+1])) continue;
+    const rank=lines[i], time=lines[i+1], name=lines[i+2];
+    const nationality=lines[i+3]||&#x27;&#x27;, gender=lines[i+4]||&#x27;&#x27;, category=lines[i+5]||&#x27;&#x27;;
+    if(!name || !/^(Homme|Femme|Male|Female)$/i.test(gender)) continue;
+    out.push({
+      rank,time,name,
+      sex:/^(Femme|Female)$/i.test(gender)?&#x27;F&#x27;:&#x27;M&#x27;,
+      category,
+      nationality,
+      profile_url:&#x27;&#x27;
+    });
+  }
+  return uniq(out);
+}
+
+async function scanUTMB(){
+  const here=new URL(location.href);
+  const base=new URL(here.href);
+  base.searchParams.delete(&#x27;page&#x27;);
+
+  const body=C(document.body.innerText);
+  const tm=body.match(/(\d+)\s+R[ée]sultats/i);
+  const total=tm?parseInt(tm[1],10):0;
+
+  let maxPage=1;
+  for(const a of document.querySelectorAll(&#x27;a[href*=&quot;page=&quot;]&#x27;)){
+    try{
+      const p=parseInt(new URL(a.href,location.href).searchParams.get(&#x27;page&#x27;)||&#x27;1&#x27;,10);
+      if(p&gt;maxPage) maxPage=p;
+    }catch(e){}
+  }
+  if(total &amp;&amp; maxPage===1) maxPage=Math.max(1,Math.ceil(total/25));
+
+  const all=[];
+  for(let p=1;p&lt;=maxPage;p++){
+    let doc;
+    const cur=parseInt(here.searchParams.get(&#x27;page&#x27;)||&#x27;1&#x27;,10);
+    if(p===cur){
+      doc=document;
+    }else{
+      const u=new URL(base.href);
+      if(p&gt;1) u.searchParams.set(&#x27;page&#x27;,String(p));
+      const r=await fetch(u.href,{credentials:&#x27;include&#x27;,cache:&#x27;no-store&#x27;});
+      if(!r.ok) throw new Error(&#x27;UTMB page &#x27;+p+&#x27; : HTTP &#x27;+r.status);
+      const text=await r.text();
+      doc=new DOMParser().parseFromString(text,&#x27;text/html&#x27;);
+    }
+    all.push(...utmbText(doc));
+  }
+  return uniq(all);
+}
+
+function goTimingTable(doc){
+  const out=[];
+  const rows=[...doc.querySelectorAll(&#x27;tr,[role=&quot;row&quot;]&#x27;)];
+  for(const tr of rows){
+    const cells=[...tr.querySelectorAll(&#x27;td,[role=&quot;cell&quot;],[role=&quot;gridcell&quot;]&#x27;)]
+      .map(x=&gt;C(x.innerText||x.textContent)).filter(Boolean);
+    if(cells.length&lt;3) continue;
+    const ri=cells.findIndex(x=&gt;/^\d{1,5}$/.test(x));
+    const ti=cells.findIndex(x=&gt;/\b(?:\d{1,2}:)?\d{1,2}:\d{2}\b/.test(x));
+    if(ri&lt;0||ti&lt;0) continue;
+
+    let ni=-1;
+    for(let i=0;i&lt;cells.length;i++){
+      if(i===ri||i===ti) continue;
+      if(/[A-Za-zÀ-ÿ]{2,}/.test(cells[i])&amp;&amp;!/^(M|F|H|Homme|Femme|SE|M\d+|V\d+)$/i.test(cells[i])){
+        ni=i; break;
+      }
+    }
+    if(ni&lt;0) continue;
+    const mt=cells[ti].match(/(?:\d{1,2}:)?\d{1,2}:\d{2}/);
+    out.push({rank:cells[ri],time:mt?mt[0]:cells[ti],name:cells[ni],sex:&#x27;&#x27;,category:&#x27;&#x27;,nationality:&#x27;&#x27;,profile_url:&#x27;&#x27;});
+  }
+  return uniq(out);
+}
+
+function goTimingText(doc){
+  const lines=(doc.body?.innerText||&#x27;&#x27;).split(/\n+/).map(C).filter(Boolean);
+  const out=[];
+  for(let i=0;i&lt;lines.length-2;i++){
+    if(!/^\d{1,5}$/.test(lines[i])) continue;
+    const mt=(lines[i+1]||&#x27;&#x27;).match(/(?:\d{1,2}:)?\d{1,2}:\d{2}/);
+    if(!mt) continue;
+    const name=lines[i+2]||&#x27;&#x27;;
+    if(!/[A-Za-zÀ-ÿ]{2,}/.test(name)) continue;
+    out.push({rank:lines[i],time:mt[0],name,sex:&#x27;&#x27;,category:&#x27;&#x27;,nationality:&#x27;&#x27;,profile_url:&#x27;&#x27;});
+  }
+  return uniq(out);
+}
+
+async function scanGoTiming(){
+  let out=goTimingTable(document);
+  if(!out.length) out=goTimingText(document);
+  return out;
+}
+
+const host=location.hostname.toLowerCase();
+let source=&#x27;&#x27;,runners=[];
+if(host.includes(&#x27;utmb.world&#x27;)){
+  source=&#x27;UTMB&#x27;;
+  runners=await scanUTMB();
+}else if(host.includes(&#x27;gotiming.fr&#x27;)){
+  source=&#x27;GoTiming&#x27;;
+  runners=await scanGoTiming();
+}else{
+  throw new Error(&#x27;Site non reconnu. Ouvre une page UTMB ou GoTiming.&#x27;);
+}
+
+if(!runners.length) throw new Error(&#x27;Aucun participant reconnu sur cette page.&#x27;);
+
+const compact=runners.map(x=&gt;[
+  x.rank||&#x27;&#x27;,x.time||&#x27;&#x27;,x.name||&#x27;&#x27;,x.sex||&#x27;&#x27;,x.category||&#x27;&#x27;,x.nationality||&#x27;&#x27;,x.profile_url||&#x27;&#x27;
+]);
+const payload={v:1,s:source,r:compact};
+const url=TARGET+&#x27;#ios=&#x27;+encodeURIComponent(JSON.stringify(payload));
+completion(url);
+})().catch(e=&gt;completion(&#x27;ERROR:&#x27;+e.message));</textarea>
+</div>
+<div class="card"><h2>Création du raccourci</h2><ol>
+<li>Ouvre l’app <b>Raccourcis</b> → <b>+</b>.</li>
+<li>Nom : <b>Importer vers Comparateur</b>.</li>
+<li>Dans les détails du raccourci, active <b>Afficher dans la feuille de partage</b> et limite l’entrée à <b>Pages web Safari</b>.</li>
+<li>Ajoute l’action <b>Exécuter JavaScript sur la page web</b>.</li>
+<li>Supprime le JavaScript d’exemple et colle le script copié ci-dessus.</li>
+<li>Ajoute ensuite l’action <b>Ouvrir les URL</b> en utilisant le résultat du JavaScript.</li>
+</ol></div>
+<div class="card"><h2>Utilisation</h2><p>Sur UTMB ou GoTiming : <b>Partager → Importer vers Comparateur</b>. Le comparateur s’ouvre directement avec les participants.</p></div>
+</div>
+<script>
+document.getElementById('copy').onclick=async()=>{
+ const code=document.getElementById('code').value;
+ try{await navigator.clipboard.writeText(code);document.getElementById('msg').textContent='Script copié.';}
+ catch(e){document.getElementById('code').select();document.execCommand('copy');document.getElementById('msg').textContent='Script copié.';}
+};
+</script></body></html>
