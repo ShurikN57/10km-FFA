@@ -1,13 +1,42 @@
-<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Comparateur 10 km</title><style>body{font-family:system-ui;background:#0f1115;color:white;padding:24px}#load{max-width:680px;margin:auto}</style></head><body><div id="load">Chargement du comparateur…</div><script>
+<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Comparateur 10 km</title><style>body{font-family:system-ui;background:#0f1115;color:#fff;padding:24px}#load{max-width:680px;margin:auto}</style></head><body><div id="load">Chargement du comparateur…</div><script>
 (async()=>{
- try{
-  const r=await fetch('https://raw.githubusercontent.com/ShurikN57/10km-FFA/846e038c86c59576204915903e721c7d54be2fa1/index.html',{cache:'no-store'}); if(!r.ok)throw new Error('HTTP '+r.status);
-  let h=await r.text();
-  const marker='<textarea id="paste"';
-  const i=h.indexOf(marker);
-  if(i>=0){const p=h.lastIndexOf('\n',i);h=h.slice(0,p)+'<div id="mobileClipboardImport"><button type="button" onclick="importClipboard()">Importer depuis le presse-papiers</button><div class="small">Le raccourci iPhone a copié le classement. Appuie ici pour l’importer.</div></div>'+h.slice(p)}
-  h=h.replace('</body>',"<style>\n#mobileClipboardImport{display:none;margin:12px 0;padding:14px;border:1px solid var(--line);border-radius:12px;background:var(--panel2)}\n#mobileClipboardImport button{width:100%;padding:14px;font-size:16px;font-weight:800}\n#mobileClipboardImport .small{margin-top:8px;color:var(--muted);font-size:12px}\n</style>\n<script>\n(function(){\n function payloadToText(d){return d.r.map(x=>{const rank=x[0]||'',time=x[1]||'',name=x[2]||'',sex=x[3]||'',cat=x[4]||'',uri=x[5]||'';const nm=uri?`[${name}](https://utmb.world/fr/runner/${uri})`:name;return [rank,time,nm,'',sex,cat,''].join('\\\\n')}).join('\\\\n')}\n async function importClipboard(){\n  try{\n   const raw=await navigator.clipboard.readText();\n   const d=JSON.parse(raw);\n   if(!d||d.v!==3||!Array.isArray(d.r))throw new Error('Le presse-papiers ne contient pas un classement compatible.');\n   const ta=document.getElementById('paste')||document.querySelector('textarea');\n   if(!ta)throw new Error('Zone de collage introuvable.');\n   ta.value=payloadToText(d); ta.dispatchEvent(new Event('input',{bubbles:true}));\n   const btn=document.getElementById('parsePaste')||[...document.querySelectorAll('button')].find(x=>/analyser|comparer|traiter/i.test(x.textContent||''));\n   if(btn)setTimeout(()=>btn.click(),80);\n   const msg=document.getElementById('raceMsg'); if(msg)msg.textContent=d.r.length+' participants importés depuis '+(d.s||'le site')+'.';\n   const box=document.getElementById('mobileClipboardImport'); if(box)box.style.display='none';\n   history.replaceState(null,'',location.pathname);\n  }catch(e){alert('Import mobile : '+e.message)}\n }\n window.importClipboard=importClipboard;\n window.addEventListener('load',()=>{if(new URLSearchParams(location.search).get('mobileimport')==='1'){const box=document.getElementById('mobileClipboardImport');if(box)box.style.display='block'}});\n setTimeout(()=>{if(new URLSearchParams(location.search).get('mobileimport')==='1'){const box=document.getElementById('mobileClipboardImport');if(box)box.style.display='block'}},250);\n})();\n</script>"+'\n</body>');
-  document.open();document.write(h);document.close();
- }catch(e){document.getElementById('load').innerHTML='<b>Erreur de chargement :</b> '+e.message;}
+  const RAW_BASE="https://raw.githubusercontent.com/ShurikN57/10km-FFA/846e038c86c59576204915903e721c7d54be2fa1/index.html";
+  try{
+    const r=await fetch(RAW_BASE,{cache:'no-store'});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const source=await r.text();
+    const doc=new DOMParser().parseFromString(source,'text/html');
+
+    for(const s of [...doc.querySelectorAll('script')]){
+      const t=s.textContent||'';
+      if(t.includes('COMPARATEUR_10K_IMPORT')||t.includes("#ios=")||t.includes("#iosb64=")||t.includes('mobileClipboardImport')) s.remove();
+    }
+    for(const st of [...doc.querySelectorAll('style')]){
+      if((st.textContent||'').includes('mobileClipboardImport'))st.remove();
+    }
+    const old=doc.getElementById('mobileClipboardImport'); if(old)old.remove();
+
+    const ta=doc.getElementById('paste')||doc.querySelector('textarea');
+    if(!ta)throw new Error('Zone de collage introuvable dans la base.');
+    const box=doc.createElement('div');
+    box.id='mobileClipboardImport';
+    box.innerHTML='<button type="button" id="mobileClipboardButton">Importer depuis le presse-papiers</button><div class="small">Le classement est prêt. Appuie ici pour lancer la comparaison.</div>';
+    ta.parentNode.insertBefore(box,ta);
+
+    const style=doc.createElement('style');
+    style.textContent='#mobileClipboardImport{display:none;margin:12px 0;padding:14px;border:1px solid var(--line);border-radius:12px;background:var(--panel2)}#mobileClipboardImport button{width:100%;padding:14px;font-size:16px;font-weight:800}#mobileClipboardImport .small{margin-top:8px;color:var(--muted);font-size:12px}';
+    doc.head.appendChild(style);
+
+    const sc=doc.createElement('script');
+    sc.textContent="(function(){\n  function payloadToText(d){\n    return d.r.map(x=>{\n      const rank=x[0]||'', time=x[1]||'', name=x[2]||'', sex=x[3]||'', cat=x[4]||'', uri=x[5]||'';\n      const nat=x[6]||'-', score=(x[7]===0||x[7])?String(x[7]):'-';\n      const safeSex=sex||'-', safeCat=cat||'-';\n      const nm=uri?`[${name}](https://utmb.world/fr/runner/${uri})`:name;\n      return [rank,time,nm,nat,safeSex,safeCat,score].join('\\n');\n    }).join('\\n');\n  }\n  async function importClipboard(){\n    try{\n      const raw=await navigator.clipboard.readText();\n      const d=JSON.parse(raw);\n      if(!d||d.v!==4||!Array.isArray(d.r))throw new Error('Le presse-papiers ne contient pas un classement v3.3 compatible.');\n      const ta=document.getElementById('paste')||document.querySelector('textarea');\n      if(!ta)throw new Error('Zone de collage introuvable.');\n      ta.value=payloadToText(d);\n      ta.dispatchEvent(new Event('input',{bubbles:true}));\n      const btn=document.getElementById('parsePaste')||[...document.querySelectorAll('button')].find(x=>/analyser|comparer|traiter/i.test(x.textContent||''));\n      if(!btn)throw new Error('Bouton d’analyse introuvable.');\n      btn.click();\n      const msg=document.getElementById('raceMsg');\n      if(msg)msg.textContent=d.r.length+' participants importés depuis '+(d.s||'le site')+'.';\n      const box=document.getElementById('mobileClipboardImport');\n      if(box)box.style.display='none';\n      history.replaceState(null,'',location.pathname);\n    }catch(e){alert('Import mobile : '+e.message)}\n  }\n  function showMobileBox(){\n    if(new URLSearchParams(location.search).get('mobileimport')!=='1')return;\n    const box=document.getElementById('mobileClipboardImport');\n    if(box)box.style.display='block';\n  }\n  window.importClipboard=importClipboard;\n  window.addEventListener('load',showMobileBox);\n  setTimeout(showMobileBox,250);\n})();";
+    doc.body.appendChild(sc);
+
+    const bind=doc.createElement('script');
+    bind.textContent="window.addEventListener('load',()=>{const b=document.getElementById('mobileClipboardButton');if(b)b.addEventListener('click',()=>window.importClipboard())});";
+    doc.body.appendChild(bind);
+
+    const html='<!doctype html>'+doc.documentElement.outerHTML;
+    document.open(); document.write(html); document.close();
+  }catch(e){document.getElementById('load').innerHTML='<b>Erreur de chargement :</b> '+String(e.message||e)}
 })();
 </script></body></html>
