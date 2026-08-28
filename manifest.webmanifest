@@ -1,0 +1,9 @@
+{
+  "name": "Comparateur 10 km FFA / GoTiming",
+  "short_name": "Comparateur 10K",
+  "start_url": "./mobile.html",
+  "display": "standalone",
+  "background_color": "#0f1115",
+  "theme_color": "#0f1115",
+  "lang": "fr"
+}
