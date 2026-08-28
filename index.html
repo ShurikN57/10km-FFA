@@ -14,7 +14,7 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#0f1115;fon
 </style>
 </head>
 <body>
-<iframe id="app" src="./app_base.html?v=34" title="Comparateur 10 km"></iframe>
+<iframe id="app" src="./app_base.html?v=36" title="Comparateur 10 km"></iframe>
 <div id="importBox">
   <button id="importBtn" type="button">Importer le classement copié</button>
   <div id="status">Le raccourci a placé le classement dans le presse-papiers.</div>
@@ -28,17 +28,23 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#0f1115;fon
   const frame=document.getElementById('app');
   if(qs.get('mobileimport')==='1') box.style.display='block';
 
-  function rowsToRunners(d){
+  function makeText(d){
     if(!d || !Array.isArray(d.r)) throw new Error('Classement invalide.');
     if(![3,4].includes(Number(d.v))) throw new Error('Version du classement non compatible.');
-    return d.r.map(x=>({
-      rank:x[0]||'',
-      time:x[1]||'',
-      name:x[2]||'',
-      sex:x[3]||'',
-      category:x[4]||'',
-      profile_url:x[5]?('https://utmb.world/fr/runner/'+x[5]):''
-    })).filter(x=>x.name);
+    const rows=d.r.filter(x=>x && x[2]);
+    if(!rows.length) throw new Error('Aucun participant dans le presse-papiers.');
+
+    if(String(d.s||'').toUpperCase()==='UTMB'){
+      return rows.map(x=>{
+        const rank=x[0]||'', time=x[1]||'', name=x[2]||'', sex=x[3]||'', cat=x[4]||'', uri=x[5]||'', nat=x[6]||'-', score=(x[7]===0||x[7])?String(x[7]):'-';
+        const g=String(sex).toUpperCase()==='F'?'Femme':'Homme';
+        const nm=uri?`[${name}](https://utmb.world/fr/runner/${uri})`:name;
+        return [rank,time,nm,nat,g,cat||'-',score].join('\n');
+      }).join('\n');
+    }
+
+    // GoTiming : le parseur texte du comparateur attend le nom AVANT le chrono.
+    return rows.map(x=>`${x[0]||''}  ${x[2]||''}  ${x[1]||''}`).join('\n');
   }
 
   async function importClipboard(){
@@ -47,14 +53,32 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#0f1115;fon
     try{
       const raw=await navigator.clipboard.readText();
       const d=JSON.parse(raw);
-      const runners=rowsToRunners(d);
-      if(!runners.length) throw new Error('Aucun participant dans le presse-papiers.');
-      status.textContent=runners.length+' participants trouvés. Import…';
-      frame.contentWindow.postMessage({type:'COMPARATEUR_10K_IMPORT',runners},location.origin);
+      if(d.s==='ERREUR') throw new Error(d.error||'Erreur du raccourci.');
+      const text=makeText(d);
+      const doc=frame.contentDocument;
+      if(!doc) throw new Error('Comparateur non chargé.');
+      const ta=doc.getElementById('paste')||doc.querySelector('textarea');
+      const parse=doc.getElementById('parsePaste');
+      if(!ta || !parse) throw new Error('Zone d’analyse introuvable.');
+
+      ta.value=text;
+      ta.dispatchEvent(new Event('input',{bubbles:true}));
+      status.textContent=d.r.length+' participants reçus. Analyse…';
+      parse.click();
+
       setTimeout(()=>{
-        box.style.display='none';
-        history.replaceState(null,'',location.pathname);
-      },700);
+        const msg=doc.getElementById('raceMsg');
+        const total=doc.getElementById('sTotal');
+        const n=total?Number(total.textContent||0):0;
+        if(n>0){
+          status.textContent=n+' participants analysés.';
+          box.style.display='none';
+          history.replaceState(null,'',location.pathname);
+        }else{
+          status.textContent=(msg&&msg.textContent)?msg.textContent:'Aucun participant reconnu.';
+          btn.disabled=false;
+        }
+      },250);
     }catch(e){
       status.textContent='Erreur : '+(e.message||e);
       btn.disabled=false;
