@@ -1,0 +1,918 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f1115">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Comparateur 10K">
+<link rel="manifest" href="./manifest.webmanifest">
+<title>Comparateur 10 km — FFA / GoTiming v3.1 iPhone</title>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<style>
+:root {
+  --bg:#0f1115; --panel:#171a21; --panel2:#20242d; --text:#f3f5f7;
+  --muted:#9aa4b2; --line:#303744; --good:#69d39b; --warn:#ffc857; --bad:#ff7a7a;
+  --accent:#71a7ff;
+}
+* { box-sizing:border-box }
+body { margin:0; font-family:Inter,system-ui,Segoe UI,Arial,sans-serif; background:var(--bg); color:var(--text); }
+.wrap { max-width:1500px; margin:0 auto; padding:20px; }
+h1 { font-size:24px; margin:0 0 6px }
+.sub { color:var(--muted); margin-bottom:20px }
+.grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.card { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:16px; }
+.card h2 { margin:0 0 12px; font-size:17px; line-height:1.3 }
+.drop {
+  display:flex; flex-direction:column; align-items:flex-start; justify-content:center;
+  gap:8px; width:100%; min-height:96px;
+  border:1px dashed #596579; background:var(--panel2); border-radius:12px; padding:16px;
+  text-align:left; cursor:pointer; margin-top:6px;
+}
+.drop:hover { border-color:var(--accent) }
+input[type=file] { display:none }
+button {
+  border:1px solid var(--line); background:var(--panel2); color:var(--text);
+  border-radius:9px; padding:9px 12px; cursor:pointer; font-weight:600;
+}
+button.primary { background:#2458a6; border-color:#3973cf }
+button:hover { filter:brightness(1.08) }
+.stats { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin:14px 0 }
+.stat { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:13px }
+.stat .n { font-size:24px; font-weight:800 }
+.stat .l { color:var(--muted); font-size:12px }
+.toolbar { display:flex; gap:8px; flex-wrap:wrap; margin:12px 0 }
+input[type=search] {
+  flex:1; min-width:220px; padding:10px 12px; border-radius:9px; border:1px solid var(--line);
+  background:var(--panel2); color:var(--text)
+}
+.tablewrap { overflow:auto; border:1px solid var(--line); border-radius:12px }
+table { width:100%; border-collapse:collapse; min-width:1050px }
+th,td { padding:9px 10px; border-bottom:1px solid var(--line); text-align:left; white-space:nowrap }
+th { position:sticky; top:0; background:#151922; z-index:2; font-size:12px; color:#c8d0dc }
+td { font-size:13px }
+tr:hover td { background:#181d26 }
+.badge { display:inline-block; padding:3px 7px; border-radius:999px; font-size:11px; font-weight:700 }
+.ok { color:var(--good); background:#163427 }
+.warn { color:var(--warn); background:#3b3012 }
+.no { color:var(--bad); background:#3a1d1d }
+.small { color:var(--muted); font-size:12px }
+.msg { margin-top:10px; color:var(--muted); min-height:18px; line-height:1.4 }
+textarea {
+  width:100%; min-height:110px; resize:vertical; border:1px solid var(--line);
+  background:var(--panel2); color:var(--text); border-radius:10px; padding:10px
+}
+.picker-note { color:var(--muted); font-size:12px; line-height:1.4 }
+@media(max-width:980px) {
+  .grid { grid-template-columns:1fr }
+  .stats { grid-template-columns:repeat(2,1fr) }
+}
+@media(max-width:700px) {
+  .wrap { padding:12px }
+  h1 { font-size:22px }
+  .card { padding:14px }
+  .toolbar { flex-direction:column }
+  .toolbar > * { width:100% }
+  input[type=search] { min-width:0 }
+  .stats { grid-template-columns:1fr 1fr }
+  .stat .n { font-size:22px }
+  th,td { padding:8px 9px; font-size:12px }
+  button { padding:11px 12px }
+}
+
+/* Optimisation iPhone / Safari */
+html { -webkit-text-size-adjust:100%; }
+body { padding-left:env(safe-area-inset-left); padding-right:env(safe-area-inset-right); }
+button, .drop, input, textarea { touch-action:manipulation; }
+.tablewrap { -webkit-overflow-scrolling:touch; }
+.ios-help {
+  display:none; margin:0 0 14px; padding:12px 14px; border:1px solid var(--line);
+  border-radius:12px; background:var(--panel2); color:var(--muted); font-size:13px; line-height:1.45;
+}
+@supports (-webkit-touch-callout:none) {
+  .ios-help { display:block; }
+}
+@media(max-width:700px) {
+  body { padding-bottom:calc(18px + env(safe-area-inset-bottom)); }
+  .wrap { padding-top:calc(12px + env(safe-area-inset-top)); }
+  .drop { min-height:88px; }
+  textarea { font-size:16px; min-height:130px; }
+  input[type=search] { font-size:16px; }
+  .tablewrap { border-radius:10px; }
+  table { min-width:980px; }
+  th,td { padding:9px 8px; }
+  .stats { gap:7px; }
+  .stat { padding:11px; }
+}
+
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Comparateur 10 km — FFA / GoTiming <span class="small">v3.1 iPhone</span></h1>
+  <div class="sub">Base FFA 2026 + Résultats nationaux + historique + Grand Est : <b id="baseCount">0</b> profils. Tu peux la remplacer par un nouveau <code>pb_10km.csv</code>.<br><span class="small">Version mobile/PC. Import direct XLS/XLSX GoTiming. Le champ URL GoTiming viendra dans une étape séparée car il nécessite une partie serveur.</span></div>
+  <div class="ios-help"><b>Sur iPhone :</b> touche « Charger un classement GoTiming ou UTMB », puis choisis le fichier dans <b>Fichiers</b>. Pour garder l’application comme une app : Safari → Partager → <b>Sur l’écran d’accueil</b>.</div>
+
+  <div class="grid">
+    <section class="card">
+      <h2>1. Base FFA</h2>
+      <label class="drop">
+        <input id="ffaFile" type="file" accept=".csv,text/csv">
+        <b>Charger un nouveau pb_10km.csv</b>
+        <span class="picker-note">Historique fusionné déjà intégré au prototype.</span>
+      </label>
+      <div id="ffaMsg" class="msg"></div>
+    </section>
+
+    <section class="card">
+      <h2>2. Classement à analyser</h2>
+      <label class="drop">
+        <input id="raceFile" type="file" accept=".xls,.xlsx,.html,.htm,.csv,.json,application/json,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/html,text/csv">
+        <b>Charger un classement GoTiming ou UTMB</b>
+        <span class="picker-note">GoTiming : XLS/XLSX depuis Fichiers. UTMB : JSON exporté ou texte collé.</span>
+      </label>
+      <div id="raceMsg" class="msg"></div>
+    </section>
+  </div>
+
+  <section class="card" style="margin-top:14px">
+    <h2>Ou coller directement un classement</h2>
+    <textarea id="paste" placeholder="Colle ici un classement GoTiming ou UTMB. Le format UTMB avec liens coureurs est reconnu automatiquement..."></textarea>
+    <div class="toolbar">
+      <button id="parsePaste">Analyser le texte collé</button>
+      <button id="clearRace">Effacer le classement</button>
+    </div>
+  </section>
+
+  <div class="stats">
+    <div class="stat"><div class="n" id="sTotal">0</div><div class="l">Participants</div></div>
+    <div class="stat"><div class="n" id="sExact">0</div><div class="l">Matchs exacts</div></div>
+    <div class="stat"><div class="n" id="sAmb">0</div><div class="l">Ambigus</div></div>
+    <div class="stat"><div class="n" id="sNone">0</div><div class="l">Non trouvés</div></div>
+    <div class="stat"><div class="n" id="sRate">0%</div><div class="l">Taux retrouvé</div></div>
+  </div>
+
+  <div class="toolbar">
+    <input id="search" type="search" placeholder="Rechercher un coureur...">
+    <button id="onlyFound">Afficher seulement trouvés</button>
+    <button id="onlyNo">Afficher seulement non trouvés</button>
+    <button id="export" class="primary">Exporter le résultat CSV</button>
+  </div>
+
+  <div class="tablewrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Pos.</th><th>Nom</th><th>Prénom</th><th>Temps course</th>
+          <th>PB 10 km FFA</th><th>Écart</th><th>Course du PB</th><th>Date PB</th>
+          <th>Club</th><th>Fiche FFA</th><th>Match</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+function chronoFromSec(sec) {
+  sec=Math.round(Number(sec)||0);
+  const h=Math.floor(sec/3600), m=Math.floor((sec%3600)/60), ss=sec%60;
+  return h ? h+"h"+String(m).padStart(2,"0")+"'"+String(ss).padStart(2,"0")+"''"
+           : m+"'"+String(ss).padStart(2,"0")+"''";
+}
+function buildFfaFromCompact(rows){
+  return rows.map(r=>({
+    full_name:r[0],
+    name_key:nameKey(r[0]),
+    annee_naissance:r[1]||"",
+    sexe:r[2]||"",
+    club:r[6]||"",
+    pb_sec:r[3],
+    pb_chrono:chronoFromSec(r[3]),
+    pb_course:r[4]||"",
+    pb_date:r[5]||"",
+    nb_performances:1,
+    source:"",
+    athlete_ffa_id:r[7]||"",
+    ffa_url:r[7] ? "https://www.athle.fr/athletes/"+r[7]+"/resultats" : ""
+  }));
+}
+
+function getFfaProfileUrl(p){
+  if(!p) return "";
+  if(p.ffa_url) return p.ffa_url;
+  if(p.athlete_ffa_id) return "https://www.athle.fr/athletes/"+p.athlete_ffa_id+"/resultats";
+  return "";
+}
+let ffa = [];
+let ffaReady = false;
+let pendingAutoParse = false;
+let race = [];
+let result = [];
+let showOnlyNo = false;
+let showOnlyFound = false;
+
+const $ = id => document.getElementById(id);
+
+function norm(s) {
+  return (s ?? "").toString().normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+    .toUpperCase().replace(/[^A-Z0-9]+/g," ").trim().replace(/\s+/g," ");
+}
+function clean(s) { return (s ?? "").toString().replace(/\s+/g," ").trim(); }
+function key(nom, prenom) { return norm(nom) + "|" + norm(prenom); }
+function nameKey(s) {
+  return norm(s).split(" ").filter(Boolean).sort().join(" ");
+}
+
+function secFromTime(s) {
+  s = clean(s);
+  if(!s) return null;
+  if(/ABANDON|DNF|DNS|DISQUAL/i.test(s)) return null;
+
+  let m = s.match(/(?:(\d{1,2})h)?\s*(\d{1,3})[’']\s*(\d{1,2})/);
+  if(m) return +(m[1]||0)*3600 + +m[2]*60 + +m[3];
+
+  // H:MM:SS (ex. 1:13:26)
+  m = s.match(/^(\d{1,2}):(\d{2}):(\d{2})$/);
+  if(m) return +m[1]*3600 + +m[2]*60 + +m[3];
+
+  // MM:SS
+  m = s.match(/^(\d{1,3}):(\d{2})$/);
+  if(m) return +m[1]*60 + +m[2];
+
+  return null;
+}
+function fmtDelta(sec) {
+  if(sec == null || isNaN(sec)) return "";
+  const sign = sec >= 0 ? "+" : "-";
+  sec = Math.abs(Math.round(sec));
+  const m = Math.floor(sec/60), s=sec%60;
+  return sign + (m ? m+"'" : "") + String(s).padStart(2,"0")+"''";
+}
+function splitFullName(s) {
+  s = clean(s);
+  const parts=s.split(" ");
+  if(parts.length<2) return [s,""];
+  let upper=[];
+  let i=0;
+  for(;i<parts.length;i++) {
+    const p=parts[i].replace(/[^A-Za-zÀ-ÿ'-]/g,"");
+    if(p && p === p.toUpperCase()) upper.push(parts[i]); else break;
+  }
+  if(upper.length && i<parts.length) return [upper.join(" "), parts.slice(i).join(" ")];
+  return [parts[0], parts.slice(1).join(" ")];
+}
+function parseCSV(text) {
+  text = text.replace(/^\uFEFF/,"");
+  const lines = text.split(/\r?\n/).filter(x=>x.trim());
+  if(!lines.length) return [];
+  const candidates=[";","\t",","];
+  let delim=";";
+  let best=-1;
+  for(const d of candidates) {
+    const needle = d === "\t" ? "\t" : d;
+    const n = lines[0].split(needle).length - 1;
+    if(n>best) {best=n;delim=d;}
+  }
+  const parseLine = line => {
+    let out=[],cur="",q=false;
+    for(let i=0;i<line.length;i++) {
+      const c=line[i];
+      if(c==='"') {
+        if(q && line[i+1]==='"') {cur+='"';i++;}
+        else q=!q;
+      } else if(c===delim && !q) {out.push(cur);cur="";}
+      else cur+=c;
+    }
+    out.push(cur); return out.map(clean);
+  };
+  const headers=parseLine(lines[0]).map(norm);
+  return lines.slice(1).map(l => {
+    const vals=parseLine(l), o={};
+    headers.forEach((h,i)=>o[h]=vals[i]??"");
+    return o;
+  });
+}
+function val(o, names) {
+  for(const n of names) {
+    const k=norm(n);
+    if(o[k] != null && clean(o[k])) return clean(o[k]);
+  }
+  return "";
+}
+function rowsToRace(rows) {
+  const out=[];
+  for(const r of rows) {
+    let nom=val(r,["NOM","LAST NAME","LASTNAME"]);
+    let prenom=val(r,["PRENOM","PRÉNOM","FIRST NAME","FIRSTNAME"]);
+    let full=val(r,["NOM COMPLET","ATHLETE","ATHLÈTE","COUREUR","PARTICIPANT","NAME"]);
+
+    // GoTiming : la colonne "Nom" contient en réalité "NOM Prénom".
+    // Si aucune colonne prénom n'existe, on découpe donc la cellule Nom.
+    if(nom && !prenom && !full) {
+      full = nom;
+      [nom,prenom] = splitFullName(full);
+    } else if(!nom && full) {
+      [nom,prenom] = splitFullName(full);
+    }
+
+    const temps=val(r,["TEMPS","TIME","CHRONO","RESULTAT","RÉSULTAT","TEMPS OFFICIEL"]);
+    const pos=val(r,["PLACE","POSITION","RANG","CLASSEMENT","POS","PL"]);
+    const cat=val(r,["CATEGORIE","CATÉGORIE","CAT"]);
+    const annee=val(r,["ANNEE NAISSANCE","ANNÉE NAISSANCE","ANNEE","YEAR","YOB"]);
+
+    if(nom && prenom && temps) out.push({pos,nom,prenom,temps,cat,annee});
+  }
+  return out;
+}
+
+function excelCellText(v) {
+  if(v == null) return "";
+  if(typeof v === "number") return String(v);
+  if(v instanceof Date && !isNaN(v)) return v.toISOString();
+  return clean(v);
+}
+function excelTimeToText(v) {
+  if(v == null || v === "") return "";
+  if(typeof v === "number") {
+    let sec = Math.round(v * 86400);
+    if(sec >= 0 && sec <= 6*3600) {
+      const h=Math.floor(sec/3600), m=Math.floor((sec%3600)/60), ss=sec%60;
+      return h ? `${h}h${String(m).padStart(2,"0")}'${String(ss).padStart(2,"0")}''`
+               : `${m}'${String(ss).padStart(2,"0")}''`;
+    }
+  }
+  return clean(v);
+}
+function headerScore(labels) {
+  let score=0;
+  const joined=labels.join("|");
+  if(/NOM|NAME|ATHLETE|ATHLÈTE|COUREUR/.test(joined)) score+=4;
+  if(/PRENOM|PRÉNOM|FIRST/.test(joined)) score+=2;
+  if(/TEMPS|TIME|CHRONO|RESULTAT|RÉSULTAT/.test(joined)) score+=4;
+  if(/PLACE|POS|POSITION|RANG|CLASSEMENT/.test(joined)) score+=2;
+  if(/DOSSARD|BIB/.test(joined)) score+=1;
+  return score;
+}
+function parseExcelArray(rows) {
+  if(!rows || !rows.length) return [];
+  let bestHeader=-1, bestScore=-1, headers=[];
+  for(let i=0;i<Math.min(rows.length,50);i++) {
+    const labels=(rows[i]||[]).map(v=>norm(excelCellText(v)));
+    const sc=headerScore(labels);
+    if(sc>bestScore) { bestScore=sc; bestHeader=i; headers=labels; }
+  }
+  if(bestHeader<0 || bestScore<6) return [];
+
+  const out=[];
+  for(const rr of rows.slice(bestHeader+1)) {
+    if(!rr || !rr.some(v=>clean(v)!=="")) continue;
+    const o={};
+    headers.forEach((h,i)=>{ if(h) o[h]=rr[i] ?? ""; });
+
+    let nom=val(o,["NOM","LAST NAME","LASTNAME"]);
+    let prenom=val(o,["PRENOM","PRÉNOM","FIRST NAME","FIRSTNAME"]);
+    let full=val(o,["NOM COMPLET","ATHLETE","ATHLÈTE","COUREUR","PARTICIPANT","NAME"]);
+    if(!nom && full) [nom,prenom]=splitFullName(full);
+
+    let rawTime = null;
+    for(const alias of ["TEMPS","TIME","CHRONO","RESULTAT","RÉSULTAT","TEMPS OFFICIEL","OFFICIEL"]) {
+      const k=norm(alias);
+      if(o[k]!=null && o[k]!=="") { rawTime=o[k]; break; }
+    }
+    const temps=excelTimeToText(rawTime);
+    const pos=val(o,["PLACE","POSITION","RANG","CLASSEMENT","POS"]);
+    const cat=val(o,["CATEGORIE","CATÉGORIE","CAT"]);
+    const annee=val(o,["ANNEE NAISSANCE","ANNÉE NAISSANCE","ANNEE","YEAR","YOB"]);
+
+    if(nom && (prenom || full) && temps) out.push({pos,nom,prenom,temps,cat,annee});
+  }
+  return out;
+}
+async function parseExcelFile(file) {
+  // GoTiming exporte actuellement certains ".xls" sous forme de HTML
+  // (table id="tabres") avec une extension Excel.
+  // On détecte d'abord ce cas avant d'utiliser SheetJS.
+  const buf = await file.arrayBuffer();
+
+  let text = "";
+  try {
+    text = new TextDecoder("utf-8").decode(buf);
+  } catch(e) {}
+
+  const head = text.slice(0, 4096).trim().toLowerCase();
+  if(head.startsWith("<table") || head.startsWith("<html") ||
+     head.includes('<table id="tabres"') || head.includes("<thead")) {
+    const parsed = parseHTML(text);
+    if(parsed.length) return parsed;
+  }
+
+  // Vrai fichier XLS/XLSX : fallback SheetJS.
+  if(typeof XLSX === "undefined") {
+    throw new Error("Ce fichier semble être un vrai Excel mais la bibliothèque XLSX n'est pas chargée.");
+  }
+
+  const wb = XLSX.read(buf, {type:"array", cellDates:true});
+  let best=[];
+  for(const sheetName of wb.SheetNames) {
+    const ws=wb.Sheets[sheetName];
+    const rows=XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:""});
+    const parsed=parseExcelArray(rows);
+    if(parsed.length>best.length) best=parsed;
+  }
+  return best;
+}
+
+function splitUtmbName(full) {
+  full=clean(full);
+  const parts=full.split(/\s+/).filter(Boolean);
+  if(parts.length<2) return [full,""];
+
+  let i=parts.length-1;
+  const surname=[];
+  for(;i>=0;i--) {
+    const p=parts[i].replace(/[^A-Za-zÀ-ÿ'-]/g,"");
+    if(p && p===p.toUpperCase()) surname.unshift(parts[i]);
+    else break;
+  }
+  if(surname.length && i>=0) return [surname.join(" "), parts.slice(0,i+1).join(" ")];
+
+  return [parts[parts.length-1], parts.slice(0,-1).join(" ")];
+}
+function parseUtmbJSON(text) {
+  let d;
+  try { d=JSON.parse(text); } catch(e) { return []; }
+  const arr = Array.isArray(d.results) ? d.results : [];
+  return arr.map(x=>{
+    const [nom,prenom]=splitUtmbName(x.name||"");
+    return {
+      pos:String(x.rank||""),
+      nom, prenom,
+      temps:String(x.time||""),
+      cat:String(x.age_category||""),
+      annee:"",
+      source:"UTMB",
+      nationality:String(x.nationality||""),
+      gender:String(x.gender||""),
+      runner_url:String(x.runner_url||""),
+      runner_id:String(x.runner_id||""),
+      race:String(x.race||""),
+      race_date:String(x.race_date||""),
+      distance:String(x.distance||"")
+    };
+  }).filter(x=>x.nom && x.temps);
+}
+function parseHTML(text) {
+  const doc = new DOMParser().parseFromString(text,"text/html");
+  const tables=[...doc.querySelectorAll("table")];
+  let best=[];
+
+  for(const table of tables) {
+    const trs=[...table.querySelectorAll("tr")];
+    if(trs.length<2) continue;
+
+    let headerRow=-1, headers=[];
+    for(let i=0;i<Math.min(20,trs.length);i++) {
+      const cells=[...trs[i].querySelectorAll("th,td")].map(c=>norm(c.textContent));
+      const joined=cells.join("|");
+      if(/NOM|ATHLETE|ATHLÈTE|COUREUR|NAME/.test(joined) &&
+         /TEMPS|CHRONO|RESULTAT|RÉSULTAT|TIME/.test(joined)) {
+        headerRow=i;
+        headers=cells;
+        break;
+      }
+    }
+    if(headerRow<0) continue;
+
+    const objs=[];
+    for(const tr of trs.slice(headerRow+1)) {
+      // Important : enfants directs uniquement, pour éviter les sous-tableaux.
+      const vals=[...tr.children]
+        .filter(c=>c.tagName==="TD" || c.tagName==="TH")
+        .map(c=>clean(c.textContent));
+
+      if(!vals.length) continue;
+      const o={};
+      headers.forEach((h,i)=>o[h]=vals[i]??"");
+      objs.push(o);
+    }
+
+    const parsed=rowsToRace(objs).filter(r=>{
+      const t=norm(r.temps);
+      return t && !/ABANDON|DNF|DNS|DISQUAL/.test(t);
+    });
+
+    if(parsed.length>best.length) best=parsed;
+  }
+  return best;
+}
+
+function parseUtmbPastedText(text) {
+  const rawLines = text
+    .split(/\r?\n/)
+    .map(x=>x.trim())
+    .filter(Boolean);
+
+  const headerWords = new Set([
+    "CLT","TEMPS","NOM","NATIONALITÉ","NATIONALITE","GENRE",
+    "CATÉGORIE D'ÂGE","CATEGORIE D'AGE","SCORE"
+  ]);
+
+  const lines = rawLines.filter(x=>!headerWords.has(norm(x)));
+  const out=[];
+
+  for(let i=0;i<lines.length;i++) {
+    if(!/^\d+$/.test(lines[i])) continue;
+
+    const rank=lines[i];
+    const time=lines[i+1] || "";
+    if(!/^\d{1,2}:\d{2}:\d{2}$/.test(time)) continue;
+
+    let full=lines[i+2] || "";
+    let runner_url="", runner_id="";
+
+    const md=full.match(/^\[([^\]]+)\]\((https?:\/\/[^)]+)\)$/);
+    if(md) {
+      full=md[1].trim();
+      runner_url=md[2].trim();
+    }
+
+    let offset=3;
+    if(!runner_url && /^https?:\/\/(?:www\.)?utmb\.world\/.+\/runner\//i.test(lines[i+3]||"")) {
+      runner_url=lines[i+3];
+      offset=4;
+    }
+
+    const im=runner_url.match(/\/runner\/(\d+)/);
+    if(im) runner_id=im[1];
+
+    const nationality=lines[i+offset] || "";
+    const gender=lines[i+offset+1] || "";
+    const age_category=lines[i+offset+2] || "";
+    const score=lines[i+offset+3] || "";
+
+    if(!full || !/^(HOMME|FEMME|MALE|FEMALE)$/i.test(gender)) continue;
+
+    const [nom,prenom]=splitUtmbName(full);
+
+    out.push({
+      pos:rank,
+      nom,
+      prenom,
+      temps:time,
+      cat:age_category,
+      annee:"",
+      source:"UTMB",
+      nationality,
+      gender,
+      runner_url,
+      runner_id,
+      score,
+      full_name_utmb:full
+    });
+
+    i += offset + 3;
+  }
+  return out;
+}
+function parsePlainText(text) {
+  const lines=text.split(/\r?\n/).map(clean).filter(Boolean);
+  const out=[];
+  for(const line of lines) {
+    const tm=line.match(/(?:(\d{1,2})h)?\s*\d{1,3}[’']\s*\d{1,2}|(?:(\d{1,2}):)?\d{1,2}:\d{2}/);
+    if(!tm) continue;
+    const temps=tm[0];
+    const before=clean(line.slice(0,tm.index));
+    const parts=before.split(/\t|\s{2,}/).filter(Boolean);
+    let name=parts.length?parts[parts.length-1]:before;
+    name=name.replace(/^\d+\s+/,"");
+    const [nom,prenom]=splitFullName(name);
+    if(nom && prenom) out.push({pos:"",nom,prenom,temps,cat:"",annee:""});
+  }
+  return out;
+}
+
+function preferFfaProfile(a,b){
+  const pa=Number(a?.pb_sec ?? Infinity), pb=Number(b?.pb_sec ?? Infinity);
+  if(pa!==pb) return pa-pb;
+  const ia=a?.athlete_ffa_id ? 1 : 0, ib=b?.athlete_ffa_id ? 1 : 0;
+  if(ia!==ib) return ib-ia;
+  const ya=a?.annee_naissance ? 1 : 0, yb=b?.annee_naissance ? 1 : 0;
+  if(ya!==yb) return yb-ya;
+  const ua=getFfaProfileUrl(a) ? 1 : 0, ub=getFfaProfileUrl(b) ? 1 : 0;
+  return ub-ua;
+}
+
+function buildIndex() {
+  const map = new Map();
+  for(const p of ffa) {
+    const nk = p.name_key || nameKey(p.full_name || ((p.nom||"")+" "+(p.prenom||"")));
+    if(!nk) continue;
+    if(!map.has(nk)) map.set(nk, []);
+    map.get(nk).push(p);
+  }
+  return map;
+}
+function compute() {
+  const idx = buildIndex();
+  result = race.map(r => {
+    const nk = nameKey((r.nom||"")+" "+(r.prenom||""));
+    let arr = idx.get(nk) || [];
+    let status = "none", p = null, matchDetail = "";
+
+    if(arr.length === 1) {
+      p = arr[0];
+      status = "exact";
+      matchDetail = p.athlete_ffa_id ? "ID FFA disponible" : "Nom unique";
+    } else if(arr.length > 1) {
+      const raceYear = String(r.annee||"").trim();
+
+      if(raceYear) {
+        const sameYear = arr.filter(x => String(x.annee_naissance||"").trim() === raceYear);
+
+        if(sameYear.length === 1) {
+          p = sameYear[0];
+          status = "exact";
+          matchDetail = p.athlete_ffa_id ? "Nom + année + ID FFA" : "Nom + année";
+        } else if(sameYear.length > 1) {
+          const ids = [...new Set(sameYear.map(x=>x.athlete_ffa_id).filter(Boolean))];
+          if(ids.length === 1) {
+            p = sameYear.slice().sort(preferFfaProfile)[0];
+            status = "exact";
+            matchDetail = "Nom + année + même ID FFA";
+          } else {
+            status = "ambiguous";
+            matchDetail = "Plusieurs homonymes même année";
+          }
+        } else {
+          status = "ambiguous";
+          matchDetail = "Nom trouvé mais année incompatible";
+        }
+      } else {
+        const years = [...new Set(arr.map(x=>String(x.annee_naissance||"").trim()).filter(Boolean))];
+        const ids = [...new Set(arr.map(x=>x.athlete_ffa_id).filter(Boolean))];
+
+        if(ids.length === 1 && ids[0]) {
+          p = arr.slice().sort(preferFfaProfile)[0];
+          status = "exact";
+          matchDetail = "Même ID FFA";
+        } else if(years.length <= 1) {
+          p = arr.slice().sort(preferFfaProfile)[0];
+          status = "exact";
+          matchDetail = "Nom unique dans une même année";
+        } else {
+          status = "ambiguous";
+          matchDetail = "Homonymes : année requise";
+        }
+      }
+    }
+
+    const raceSec = secFromTime(r.temps);
+    const pbSec = p ? Number(p.pb_sec) : null;
+    return {
+      ...r, status, p, matchDetail, raceSec, pbSec,
+      delta:(raceSec!=null && pbSec!=null) ? raceSec-pbSec : null
+    };
+  });
+  render();
+}
+function render() {
+  const q=norm($("search").value);
+  const rows=result.filter(x=>{
+    if(showOnlyNo && x.status!=="none") return false;
+    if(showOnlyFound && x.status==="none") return false;
+    if(q && !norm(x.nom+" "+x.prenom).includes(q)) return false;
+    return true;
+  });
+  $("tbody").innerHTML=rows.map(x=>{
+    const p=x.p||{};
+    const badge=x.status==="exact"
+      ? `<span class="badge ok" title="${esc(x.matchDetail||"")}">Exact</span>`
+      : x.status==="ambiguous"
+        ? `<span class="badge warn" title="${esc(x.matchDetail||"")}">Ambigu</span>`
+        : '<span class="badge no">Non trouvé</span>';
+
+    const _ffaUrl = getFfaProfileUrl(p);
+    const ffaLink = _ffaUrl
+      ? `<a href="${esc(_ffaUrl)}" target="_blank" rel="noopener" style="color:var(--accent);font-weight:700;text-decoration:none">Ouvrir</a>`
+      : "—";
+
+    const nomCell = _ffaUrl
+      ? `<a href="${esc(_ffaUrl)}" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;text-decoration-color:#596579"><b>${esc(x.nom)}</b></a>`
+      : `<b>${esc(x.nom)}</b>`;
+
+    return `<tr>
+      <td>${esc(x.pos)}</td><td>${nomCell}</td><td>${esc(x.prenom)}</td>
+      <td>${esc(x.temps)}</td><td>${esc(p.pb_chrono||"—")}</td>
+      <td>${x.delta==null?"—":esc(fmtDelta(x.delta))}</td>
+      <td>${esc(p.pb_course||"—")}</td><td>${esc(p.pb_date||"—")}</td>
+      <td>${esc(p.club||"—")}</td><td>${ffaLink}</td><td>${badge}</td>
+    </tr>`;
+  }).join("");
+  const total=result.length, exact=result.filter(x=>x.status==="exact").length,
+    amb=result.filter(x=>x.status==="ambiguous").length, none=result.filter(x=>x.status==="none").length;
+  $("sTotal").textContent=total; $("sExact").textContent=exact; $("sAmb").textContent=amb; $("sNone").textContent=none;
+  $("sRate").textContent= total ? Math.round((exact+amb)*100/total)+"%" : "0%";
+}
+function esc(s) {
+  return (s??"").toString().replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+function exportCSV() {
+  const headers=["position","nom","prenom","temps_course","pb_10km_ffa","ecart_sec","ecart","course_pb","date_pb","club","match"];
+  const lines=[headers.join(";")];
+  for(const x of result) {
+    const p=x.p||{};
+    const vals=[x.pos,x.nom,x.prenom,x.temps,p.pb_chrono||"",x.delta??"",fmtDelta(x.delta),p.pb_course||"",p.pb_date||"",p.club||"",x.status];
+    lines.push(vals.map(v=>'"'+String(v??"").replace(/"/g,'""')+'"').join(";"));
+  }
+  const blob=new Blob(["\ufeff"+lines.join("\r\n")],{type:"text/csv;charset=utf-8"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="comparaison_ffa_10km.csv"; a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function setImportEnabled(on){
+  for(const id of ["parsePaste","raceFile"]){
+    const el=$(id);
+    if(el) el.disabled=!on;
+  }
+}
+setImportEnabled(false);
+$("ffaMsg").textContent="Chargement de la base FFA…";
+fetch("./ffa_base.json").then(r=>{
+  if(!r.ok) throw new Error("HTTP "+r.status);
+  return r.json();
+}).then(rows=>{
+  ffa=buildFfaFromCompact(rows);
+  ffaReady=true;
+  $("baseCount").textContent=ffa.length;
+  $("ffaMsg").textContent="Base chargée : "+ffa.length+" profils — bilan national FFA 2026 + historique + Grand Est.";
+  setImportEnabled(true);
+  if(pendingAutoParse){
+    pendingAutoParse=false;
+    runPasteAnalysis();
+  } else if(race.length){
+    compute();
+  }
+}).catch(err=>{
+  $("ffaMsg").textContent="Erreur de chargement de la base FFA : "+(err&&err.message?err.message:err)+". Recharge la page.";
+});
+
+$("ffaFile").addEventListener("change", async e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const text=await f.text(), rows=parseCSV(text);
+  const parsed=rows.map(r=>{
+    const full = val(r,["full_name","nom_complet"]) || (val(r,["nom"])+" "+val(r,["prenom"])).trim();
+    return {
+      full_name:full,
+      name_key:val(r,["name_key"]) || nameKey(full),
+      nom:val(r,["nom"]),
+      prenom:val(r,["prenom"]),
+      annee_naissance:val(r,["annee_naissance"]),
+      sexe:val(r,["sexe"]),
+      club:val(r,["club"]),
+      pb_sec:val(r,["pb_sec"]),
+      pb_chrono:val(r,["pb_chrono"]),
+      pb_course:val(r,["pb_course"]),
+      pb_date:val(r,["pb_date"]),
+      nb_performances:val(r,["nb_performances"]),
+      source:val(r,["source"])
+    };
+  }).filter(x=>x.full_name && x.pb_sec);
+  if(!parsed.length) {
+    $("ffaMsg").textContent="Aucune ligne FFA reconnue.";
+    return;
+  }
+  ffa=parsed; ffaReady=true; setImportEnabled(true);
+  $("baseCount").textContent=ffa.length;
+  $("ffaMsg").textContent="Nouvelle base chargée : "+ffa.length+" coureurs.";
+  if(pendingAutoParse){ pendingAutoParse=false; runPasteAnalysis(); }
+  else compute();
+});
+
+$("raceFile").addEventListener("change", async e=>{
+  const f=e.target.files[0]; if(!f) return;
+  try {
+    let parsed=[];
+    const name=f.name.toLowerCase();
+    if(name.endsWith(".xls") || name.endsWith(".xlsx")) {
+      parsed=await parseExcelFile(f);
+    } else {
+      const text=await f.text();
+      if(name.endsWith(".json")) parsed=parseUtmbJSON(text);
+      else parsed=name.endsWith(".csv") ? rowsToRace(parseCSV(text)) : parseHTML(text);
+      if(!parsed.length && !name.endsWith(".json")) parsed=parsePlainText(text);
+    }
+    race=parsed;
+    $("raceMsg").textContent=parsed.length
+      ? parsed.length+" participants détectés dans "+f.name+"."
+      : "Aucun participant reconnu dans ce fichier.";
+    compute();
+  } catch(err) {
+    race=[]; result=[]; render();
+    $("raceMsg").textContent="Erreur import : "+(err && err.message ? err.message : err);
+  }
+});
+function runPasteAnalysis(){
+  const text=$("paste").value;
+  let parsed=parseUtmbPastedText(text);
+  let source=parsed.length ? "UTMB" : "texte";
+
+  if(!parsed.length) parsed=parsePlainText(text);
+  if(!parsed.length && /<table/i.test(text)) parsed=parseHTML(text);
+
+  race=parsed;
+  $("raceMsg").textContent=parsed.length
+    ? parsed.length+" participants détectés ("+source+")."
+    : "Aucun participant reconnu dans le texte collé.";
+  compute();
+}
+$("parsePaste").onclick=runPasteAnalysis;
+$("clearRace").onclick=()=>{race=[];result=[];$("paste").value="";$("raceMsg").textContent="";render();};
+$("search").addEventListener("input",render);
+$("onlyFound").onclick=()=>{
+  showOnlyFound=!showOnlyFound;
+  if(showOnlyFound) showOnlyNo=false;
+
+  $("onlyFound").textContent=showOnlyFound ? "Afficher tous" : "Afficher seulement trouvés";
+  $("onlyNo").textContent="Afficher seulement non trouvés";
+  render();
+};
+
+$("onlyNo").onclick=()=>{
+  showOnlyNo=!showOnlyNo;
+  if(showOnlyNo) showOnlyFound=false;
+
+  $("onlyNo").textContent=showOnlyNo ? "Afficher tous" : "Afficher seulement non trouvés";
+  $("onlyFound").textContent="Afficher seulement trouvés";
+  render();
+};
+$("export").onclick=exportCSV;
+render();
+</script>
+
+<script>
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(()=>{}));
+}
+</script>
+
+
+<script>
+(function(){
+window.addEventListener('message',function(e){
+ const p=e.data;
+ if(!p||p.type!=='COMPARATEUR_10K_IMPORT'||!Array.isArray(p.runners))return;
+ const rr=p.runners.filter(x=>x&&x.name);
+ const ta=document.querySelector('textarea');
+ if(!ta)return alert('Zone de collage introuvable.');
+ ta.value=rr.map(x=>{
+   const n=x.profile_url?`[${x.name}](${x.profile_url})`:x.name;
+   return [x.rank||'',x.time||'',n,'',x.sex||'',x.category||'',''].join('\t');
+ }).join('\n');
+ ta.dispatchEvent(new Event('input',{bubbles:true}));
+ const b=[...document.querySelectorAll('button')].find(x=>/analyser|comparer|traiter|import/i.test(x.textContent||'')&&!/vider|effacer/i.test(x.textContent||''));
+ if(b)setTimeout(()=>b.click(),100);
+ try{e.source.postMessage({type:'COMPARATEUR_10K_ACK'},'*')}catch(_){}
+});
+})();
+</script>
+
+
+<script>
+// Import direct depuis le raccourci iPhone (v4, robuste) : le texte est déjà
+// au format attendu par la zone de collage, encodé en base64 dans le hash.
+// Aucune dépendance au presse-papiers : ça évite la boîte de dialogue de
+// permission Safari qui pouvait rester bloquée sans jamais afficher d'erreur.
+(function(){
+  function fromB64(s){
+    return decodeURIComponent(escape(atob(s)));
+  }
+  function loadImport64(){
+    if(!location.hash.startsWith('#import64=')) return;
+    try{
+      const text=fromB64(location.hash.slice('#import64='.length));
+      const ta=document.getElementById('paste')||document.querySelector('textarea');
+      if(!ta) throw new Error('Zone de collage introuvable');
+      ta.value=text;
+      ta.dispatchEvent(new Event('input',{bubbles:true}));
+
+      // Nettoie le hash pour éviter de retraiter les données au rechargement.
+      history.replaceState(null,'',location.pathname+location.search);
+
+      if(typeof ffaReady!=='undefined' && ffaReady){
+        setTimeout(()=>{ if(typeof runPasteAnalysis==='function') runPasteAnalysis(); },80);
+      } else if(typeof pendingAutoParse!=='undefined'){
+        pendingAutoParse=true;
+      }
+    }catch(e){
+      alert('Import iPhone : '+e.message);
+    }
+  }
+  window.addEventListener('load',loadImport64);
+  setTimeout(loadImport64,150);
+})();
+</script>
+
+</body>
+</html>
