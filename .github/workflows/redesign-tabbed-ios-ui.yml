@@ -1,0 +1,21 @@
+name: Redesign tabbed iOS UI
+on:
+  push:
+    paths:
+      - '.github/workflows/redesign-tabbed-ios-ui.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch files
+        run: python .github/scripts/redesign_tabbed_ios_ui.py
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add mobile.html "app base.html"
+          git commit -m "Redesign app with bottom tabs and premium iOS UI"
+          git push
