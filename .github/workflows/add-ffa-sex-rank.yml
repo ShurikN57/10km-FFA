@@ -1,0 +1,68 @@
+name: Add FFA sex ranking
+on:
+  push:
+    paths:
+      - '.github/workflows/add-ffa-sex-rank.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch search ranking
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          files = [Path('mobile.html'), Path('app base.html')]
+
+          old_head = '''let ffaAthleteSearchTimer=null;
+function renderFfaAthleteSearch(){'''
+          new_head = '''let ffaAthleteSearchTimer=null;
+let ffaSexRank=new Map();
+function buildFfaSexRanks(){
+  ffaSexRank=new Map();
+  for(const sex of ["M","F"]){
+    const arr=ffa.filter(p=>p.sexe===sex && Number.isFinite(Number(p.pb_sec)))
+      .sort((a,b)=>Number(a.pb_sec)-Number(b.pb_sec));
+    let prev=null, rank=0;
+    arr.forEach((p,i)=>{
+      const sec=Number(p.pb_sec);
+      if(sec!==prev){ rank=i+1; prev=sec; }
+      ffaSexRank.set(p,rank);
+    });
+  }
+}
+function renderFfaAthleteSearch(){'''
+
+          old_meta = '''    const meta=[p.annee_naissance||"année inconnue",p.sexe||"",p.pb_chrono||""].filter(Boolean).join(" · ");'''
+          new_meta = '''    const rank=ffaSexRank.get(p);
+    const rankText=rank ? (rank===1 ? "1er" : rank+"e") : "";
+    const meta=[p.annee_naissance||"année inconnue",p.sexe||"",p.pb_chrono||"",rankText].filter(Boolean).join(" · ");'''
+
+          old_load = '''  ffa=buildFfaFromCompact(rows);
+  ffaReady=true;'''
+          new_load = '''  ffa=buildFfaFromCompact(rows);
+  buildFfaSexRanks();
+  ffaReady=true;'''
+
+          for path in files:
+            text = path.read_text(encoding='utf-8')
+            for old,new,label in [
+              (old_head,new_head,'rank functions'),
+              (old_meta,new_meta,'rank display'),
+              (old_load,new_load,'rank build'),
+            ]:
+              if old not in text:
+                raise SystemExit(f'{path}: motif introuvable: {label}')
+              text = text.replace(old,new,1)
+            path.write_text(text,encoding='utf-8')
+          PY
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add mobile.html "app base.html"
+          git commit -m "Add male/female PB rank to FFA search"
+          git push
