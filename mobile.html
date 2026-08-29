@@ -725,8 +725,25 @@ $("paste").addEventListener("input", ()=>{
       if(!text || text.trim().length<10) throw new Error('données importées vides');
       $("paste").value=text;
       switchAppTab("analyse");
+
+      // Parse l'import immédiatement, sans attendre le chargement complet
+      // de la base FFA. Cela remplit Analyse tout de suite sur Safari.
+      let parsed=parseUtmbPastedText(text);
+      let source=parsed.length ? "UTMB" : "texte";
+      if(!parsed.length) parsed=parsePlainText(text);
+      if(!parsed.length && /<table/i.test(text)) parsed=parseHTML(text);
+      race=parsed;
+      result=[];
+      $("raceMsg").textContent=parsed.length
+        ? parsed.length+" participants détectés ("+source+"). Chargement des correspondances FFA…"
+        : "Aucun participant reconnu.";
+      if(parsed.length) saveLastPaste(text);
+      render();
+
       history.replaceState(null,'',location.pathname+location.search);
-      if(ffaReady) runPasteAnalysis(); else pendingAutoParse=true;
+      // Si la base est déjà prête, calcule immédiatement. Sinon le .then()
+      // de loadFfaRows() calculera automatiquement grâce à race.length.
+      if(ffaReady && parsed.length) compute();
     }catch(e){
       alert('Import : '+e.message);
     }
