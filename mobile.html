@@ -131,7 +131,50 @@ let showOnlyFound = false;
 let sortKey = "pos";
 let sortDir = 1;
 const $ = id => document.getElementById(id);
-\nlet ffaAthleteSearchTimer=null;\nfunction renderFfaAthleteSearch(){\n  const input=$("ffaAthleteSearch"), box=$("ffaAthleteSearchResults"), msg=$("ffaAthleteSearchMsg");\n  if(!input||!box||!msg) return;\n  const q=norm(input.value);\n  box.innerHTML=""; box.style.display="none";\n  if(!q){ msg.textContent=""; return; }\n  if(!ffaReady){ msg.textContent="Base FFA en cours de chargement…"; return; }\n  if(q.length<3){ msg.textContent="Saisis au moins 3 caractères."; return; }\n  const tokens=q.split(" ").filter(Boolean);\n  const found=[];\n  for(const p of ffa){\n    const nk=p.name_key||nameKey(p.full_name||"");\n    if(tokens.every(t=>nk.includes(t))){\n      found.push(p);\n      if(found.length>=100) break;\n    }\n  }\n  found.sort((a,b)=>{\n    const ya=Number(a.annee_naissance)||9999, yb=Number(b.annee_naissance)||9999;\n    return ya-yb || norm(a.full_name).localeCompare(norm(b.full_name));\n  });\n  if(!found.length){ msg.textContent="Aucun athlète trouvé."; return; }\n  msg.textContent=found.length+(found.length===100?"+":"")+" profil"+(found.length>1?"s":"")+" trouvé"+(found.length>1?"s":"")+".";\n  box.style.display="block";\n  box.innerHTML=found.map(p=>{\n    const url=getFfaProfileUrl(p);\n    const name=esc(p.full_name||"");\n    const meta=[p.annee_naissance||"année inconnue",p.sexe||"",p.pb_chrono||""].filter(Boolean).join(" · ");\n    const action=url\n      ? `<a href="${esc(url)}" target="_blank" rel="noopener" style="color:var(--accent);font-weight:700;text-decoration:none;white-space:nowrap">Fiche FFA ↗</a>`\n      : `<span class="small" style="white-space:nowrap">Pas de fiche FFA</span>`;\n    return `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 11px;border-bottom:1px solid var(--line)"><div style="min-width:0"><div style="font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</div><div class="small">${esc(meta)}</div></div>${action}</div>`;\n  }).join("");\n}\nconst _ffaAthleteSearch=$("ffaAthleteSearch");\nif(_ffaAthleteSearch){\n  _ffaAthleteSearch.addEventListener("input",()=>{\n    clearTimeout(ffaAthleteSearchTimer);\n    ffaAthleteSearchTimer=setTimeout(renderFfaAthleteSearch,220);\n  });\n}\n
+
+let ffaAthleteSearchTimer=null;
+function renderFfaAthleteSearch(){
+  const input=$("ffaAthleteSearch"), box=$("ffaAthleteSearchResults"), msg=$("ffaAthleteSearchMsg");
+  if(!input||!box||!msg) return;
+  const q=norm(input.value);
+  box.innerHTML=""; box.style.display="none";
+  if(!q){ msg.textContent=""; return; }
+  if(!ffaReady){ msg.textContent="Base FFA en cours de chargement…"; return; }
+  if(q.length<3){ msg.textContent="Saisis au moins 3 caractères."; return; }
+  const tokens=q.split(" ").filter(Boolean);
+  const found=[];
+  for(const p of ffa){
+    const nk=p.name_key||nameKey(p.full_name||"");
+    if(tokens.every(t=>nk.includes(t))){
+      found.push(p);
+      if(found.length>=100) break;
+    }
+  }
+  found.sort((a,b)=>{
+    const ya=Number(a.annee_naissance)||9999, yb=Number(b.annee_naissance)||9999;
+    return ya-yb || norm(a.full_name).localeCompare(norm(b.full_name));
+  });
+  if(!found.length){ msg.textContent="Aucun athlète trouvé."; return; }
+  msg.textContent=found.length+(found.length===100?"+":"")+" profil"+(found.length>1?"s":"")+" trouvé"+(found.length>1?"s":"")+".";
+  box.style.display="block";
+  box.innerHTML=found.map(p=>{
+    const url=getFfaProfileUrl(p);
+    const name=esc(p.full_name||"");
+    const meta=[p.annee_naissance||"année inconnue",p.sexe||"",p.pb_chrono||""].filter(Boolean).join(" · ");
+    const action=url
+      ? `<a href="${esc(url)}" target="_blank" rel="noopener" style="color:var(--accent);font-weight:700;text-decoration:none;white-space:nowrap">Fiche FFA ↗</a>`
+      : `<span class="small" style="white-space:nowrap">Pas de fiche FFA</span>`;
+    return `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 11px;border-bottom:1px solid var(--line)"><div style="min-width:0"><div style="font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</div><div class="small">${esc(meta)}</div></div>${action}</div>`;
+  }).join("");
+}
+const _ffaAthleteSearch=$("ffaAthleteSearch");
+if(_ffaAthleteSearch){
+  _ffaAthleteSearch.addEventListener("input",()=>{
+    clearTimeout(ffaAthleteSearchTimer);
+    ffaAthleteSearchTimer=setTimeout(renderFfaAthleteSearch,220);
+  });
+}
+
 function sortRows(rows){
   const dir=sortDir, arr=rows.slice();
   if(sortKey==="pos"){
