@@ -5,18 +5,19 @@ FILES=[Path('mobile.html'),Path('app base.html')]
 for path in FILES:
     text=path.read_text(encoding='utf-8')
 
-    # Header / base status styling
-    old_header='''  <h1>Comparateur 10 km</h1>\n  <div class="sub" id="baseStatus">Chargement de la base FFA…</div>'''
-    new_header='''  <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px">\n    <h1 style="margin:0">Comparateur 10 km</h1>\n    <div id="baseStatus" style="flex:0 0 auto;padding:5px 9px;border:1px solid var(--line);border-radius:999px;background:var(--panel);color:var(--muted);font-size:11px;font-weight:700;white-space:nowrap">Chargement…</div>\n  </div>'''
-    if old_header not in text:
-        raise SystemExit(f'{path}: header anchor not found')
-    text=text.replace(old_header,new_header,1)
+    # Header / base status styling: mobile only
+    if path.name == 'mobile.html':
+        old_header='''  <h1>Comparateur 10 km</h1>\n  <div class="sub" id="baseStatus">Chargement de la base FFA…</div>'''
+        new_header='''  <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px">\n    <h1 style="margin:0">Comparateur 10 km</h1>\n    <div id="baseStatus" style="flex:0 0 auto;padding:5px 9px;border:1px solid var(--line);border-radius:999px;background:var(--panel);color:var(--muted);font-size:11px;font-weight:700;white-space:nowrap">Chargement…</div>\n  </div>'''
+        if old_header not in text:
+            raise SystemExit(f'{path}: header anchor not found')
+        text=text.replace(old_header,new_header,1)
 
     # Compact empty gap in search card
     text=text.replace('''    <button type="button" id="openFfaRanking" style="width:100%;margin-top:9px">Voir le classement complet</button>''',
                       '''    <button type="button" id="openFfaRanking" style="width:100%;margin-top:6px">Voir le classement complet</button>''',1)
 
-    # Rank formatting: number only, grouped thousands, wider/responsive rank column
+    # Rank formatting: number only, grouped thousands, enough width for 6 digits
     old_rank='''    const rankText=rank===1?"1er":rank+"e";'''
     new_rank='''    const rankText=Number(rank).toLocaleString("fr-FR");'''
     if old_rank not in text:
@@ -29,13 +30,12 @@ for path in FILES:
         raise SystemExit(f'{path}: ranking row anchor not found')
     text=text.replace(old_row,new_row,1)
 
-    # Base status compact text
-    old_status='''  $("baseStatus").textContent="Base FFA : "+ffa.length+" profils chargés.";'''
-    new_status='''  $("baseStatus").textContent=ffa.length.toLocaleString("fr-FR")+" profils";'''
-    if old_status in text:
+    # Base status compact text on mobile
+    if path.name == 'mobile.html':
+        old_status='''  $("baseStatus").textContent="Base FFA : "+ffa.length+" profils chargés.";'''
+        new_status='''  $("baseStatus").textContent=ffa.length.toLocaleString("fr-FR")+" profils";'''
+        if old_status not in text:
+            raise SystemExit(f'{path}: base status anchor not found')
         text=text.replace(old_status,new_status,1)
-    else:
-        # desktop variant may use baseCount; leave unchanged if absent
-        pass
 
     path.write_text(text,encoding='utf-8')
