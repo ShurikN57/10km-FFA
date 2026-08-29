@@ -76,6 +76,11 @@ tr:hover td { background:#181d26 }
     <div id="baseStatus" style="flex:0 0 auto;padding:5px 9px;border:1px solid var(--line);border-radius:999px;background:var(--panel);color:var(--muted);font-size:11px;font-weight:700;white-space:nowrap">Chargement…</div>
   </div>
 
+  <section class="card" id="ffaRankingAccessCard" style="margin-bottom:12px">
+    <h2 style="margin:0 0 10px;font-size:16px">Classement FFA</h2>
+    <button type="button" id="openFfaRanking" class="primary" style="width:100%">Voir le classement complet</button>
+  </section>
+
   <section class="card" id="ffaSearchCard" style="margin-bottom:12px">
     <h2 style="margin:0 0 10px;font-size:16px">Rechercher un athlète FFA</h2>
     <input id="ffaAthleteSearch" type="search" placeholder="Nom et prénom..." autocomplete="off" style="width:100%;margin:0">
@@ -86,7 +91,6 @@ tr:hover td { background:#181d26 }
     </div>
     <div id="ffaAthleteSearchMsg" class="msg" style="margin-top:8px"></div>
     <div id="ffaAthleteSearchResults" style="display:none;margin-top:8px;border:1px solid var(--line);border-radius:10px;overflow:hidden"></div>
-    <button type="button" id="openFfaRanking" style="width:100%;margin-top:10px">Voir le classement complet</button>
   </section>
   <section class="card" id="ffaRankingCard" style="display:none;margin-bottom:12px">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px">
@@ -121,14 +125,8 @@ tr:hover td { background:#181d26 }
     </div>
   </div>
 
-  <div class="card">
-    <button class="paste" id="pasteBtn" style="width:100%">📋 Coller le classement</button>
-    <textarea id="paste" placeholder="…ou colle ici manuellement (appui long → Coller)" style="margin-top:10px"></textarea>
-    <div class="toolbar">
-      <button id="clearRace">Effacer</button>
-    </div>
-    <div id="raceMsg" class="msg"></div>
-  </div>
+  <textarea id="paste" aria-hidden="true" tabindex="-1" style="display:none"></textarea>
+  <div id="raceMsg" class="msg" style="margin:0 0 8px;min-height:0"></div>
 
   <div class="stats">
     <div class="stat"><div class="n" id="sTotal">0</div><div class="l">Participants</div></div>
@@ -138,10 +136,13 @@ tr:hover td { background:#181d26 }
   </div>
 
   <input id="search" type="search" placeholder="Rechercher un coureur...">
-  <div class="toolbar" style="margin-top:0;margin-bottom:10px">
+  <div class="toolbar" style="margin-top:0;margin-bottom:8px">
     <button id="onlyFound">Trouvés</button>
     <button id="onlyNo">Non trouvés</button>
+  </div>
+  <div class="toolbar" style="margin-top:0;margin-bottom:10px">
     <button id="export" class="primary">Export CSV</button>
+    <button id="clearRace">Effacer</button>
   </div>
 
   <div class="tablewrap">
@@ -541,14 +542,15 @@ loadFfaRows().then(rows=>{
 // système ("Coller") avant d'autoriser la lecture du presse-papier par un
 // site web — ce n'est pas quelque chose que le code peut supprimer, c'est
 // une protection systématique d'iOS, pas un bug de l'appli.
-$("pasteBtn").onclick=async()=>{
+const _pasteBtn=$("pasteBtn");
+if(_pasteBtn) _pasteBtn.onclick=async()=>{
   try{
     const text=await navigator.clipboard.readText();
     if(!text){ $("raceMsg").textContent="Presse-papier vide."; return; }
     $("paste").value=text;
     if(ffaReady) runPasteAnalysis(); else pendingAutoParse=true;
   }catch(e){
-    $("raceMsg").textContent="Collage automatique impossible ("+(e&&e.message?e.message:e)+"). Fais un appui long dans la zone de texte ci-dessous → Coller.";
+    $("raceMsg").textContent="Collage automatique impossible.";
   }
 };
 
