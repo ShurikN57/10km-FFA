@@ -1,0 +1,10 @@
+from pathlib import Path
+
+for path in [Path('mobile.html'), Path('app base.html')]:
+    if not path.exists():
+        continue
+    t=path.read_text(encoding='utf-8')
+    t=t.replace('''        <div class="card" id="restoreCard" style="display:none;padding:12px 14px">\n          <div class="msg" style="margin-top:0">Un classement précédent est disponible.</div>\n          <div class="toolbar" style="margin-top:8px"><button id="restoreBtn">Restaurer</button><button id="dismissRestoreBtn">Ignorer</button></div>\n        </div>''','''        <div id="restoreCard" style="display:none;margin:0 0 12px">\n          <button type="button" id="restoreBtn" style="width:100%;min-height:44px;background:#171c24;border:1px solid #303846;color:var(--accent);font-weight:700">Restaurer le dernier classement</button>\n        </div>''',1)
+    t=t.replace('''const lastSaved=loadLastPaste();\nif(lastSaved){\n  $("restoreCard").style.display="block";\n}\n$("restoreBtn").onclick=()=>{\n  $("paste").value=lastSaved;\n  $("restoreCard").style.display="none";\n  if(ffaReady) runPasteAnalysis(); else pendingAutoParse=true;\n};\n$("dismissRestoreBtn").onclick=()=>{\n  clearLastPaste();\n  $("restoreCard").style.display="none";\n};''','''function refreshRestoreButton(){\n  const card=$("restoreCard");\n  if(card) card.style.display=loadLastPaste() ? "block" : "none";\n}\nrefreshRestoreButton();\n$("restoreBtn").onclick=()=>{\n  const saved=loadLastPaste();\n  if(!saved){ refreshRestoreButton(); return; }\n  $("paste").value=saved;\n  $("restoreCard").style.display="none";\n  if(ffaReady) runPasteAnalysis(); else pendingAutoParse=true;\n};''',1)
+    t=t.replace('''$("clearRace").onclick=()=>{race=[];result=[];$("paste").value="";$("raceMsg").textContent="";clearLastPaste();render();};''','''$("clearRace").onclick=()=>{race=[];result=[];$("paste").value="";$("raceMsg").textContent="";showOnlyFound=false;showOnlyNo=false;$("onlyFound").textContent="Trouvés";$("onlyNo").textContent="Non trouvés";render();refreshRestoreButton();};''',1)
+    path.write_text(t,encoding='utf-8')
