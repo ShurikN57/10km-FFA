@@ -323,8 +323,6 @@ let ffaRankMode="sex";
 let ffaGeneralRank=new Map();
 let ffaSexRank=new Map();
 let ffaCategoryRank=new Map();
-let ffaGeneralSorted=[];
-let ffaScopeCache=new Map();
 function currentFfaCategory(p){
   const y=Number(p.annee_naissance);
   if(!Number.isFinite(y)) return "";
@@ -381,15 +379,10 @@ function buildFfaSexRanks(){
   ffaGeneralRank=new Map();
   ffaSexRank=new Map();
   ffaCategoryRank=new Map();
-  ffaScopeCache=new Map();
   const valid=ffa.filter(p=>Number.isFinite(Number(p.pb_sec)));
-  ffaGeneralSorted=valid.slice();
-  assignRanks(ffaGeneralSorted,ffaGeneralRank);
-  ffaScopeCache.set("||",{rows:ffaGeneralSorted,ranks:ffaGeneralRank});
+  assignRanks(valid.slice(),ffaGeneralRank);
   for(const sex of ["M","F"]){
-    const arr=valid.filter(p=>p.sexe===sex);
-    assignRanks(arr,ffaSexRank);
-    ffaScopeCache.set(sex+"||",{rows:arr,ranks:ffaSexRank});
+    assignRanks(valid.filter(p=>p.sexe===sex),ffaSexRank);
   }
   const groups=new Map();
   for(const p of valid){
@@ -463,10 +456,7 @@ function parsePbLimit(v){
   const m=v.match(/^(\d{1,2})[:h](\d{1,2})$/i);
   return m ? Number(m[1])*60+Number(m[2]) : null;
 }
-function scopedFullRankData(sex,cat,year){
-  const key=[sex||"",cat||"",year||""].join("|");
-  const cached=ffaScopeCache.get(key);
-  if(cached) return cached;
+function scopedFullRankMap(sex,cat,year){
   const scope=ffa.filter(p=>{
     if(!Number.isFinite(Number(p.pb_sec))) return false;
     if(sex && p.sexe!==sex) return false;
@@ -476,9 +466,7 @@ function scopedFullRankData(sex,cat,year){
   });
   const map=new Map();
   assignRanks(scope,map);
-  const data={rows:scope,ranks:map};
-  ffaScopeCache.set(key,data);
-  return data;
+  return map;
 }
 function renderFullFfaRanking(resetPage=false){
   if(resetPage) ffaFullPage=0;
@@ -490,20 +478,22 @@ function renderFullFfaRanking(resetPage=false){
   const cat=$("ffaFullCategory").value;
   const year=String($("ffaFullYear").value||"").trim();
   const maxPb=parsePbLimit($("ffaFullMaxPb").value);
-  const scopeData=scopedFullRankData(sex,cat,year);
-  const ranks=scopeData.ranks;
-  let rows=scopeData.rows;
-  if(maxPb!=null || q){
-    const toks=q ? q.split(" ").filter(Boolean) : [];
-    rows=rows.filter(p=>{
-      if(maxPb!=null && Number(p.pb_sec)>maxPb) return false;
-      if(toks.length){
-        const nk=p.name_key||nameKey(p.full_name||"");
-        if(!toks.every(t=>nk.includes(t))) return false;
-      }
-      return true;
-    });
-  }
+  const ranks=scopedFullRankMap(sex,cat,year);
+  let rows=ffa.filter(p=>{
+    const rank=ranks.get(p);
+    if(rank==null) return false;
+    if(maxPb!=null && Number(p.pb_sec)>maxPb) return false;
+    if(q){
+      const nk=p.name_key||nameKey(p.full_name||"");
+      const toks=q.split(" ").filter(Boolean);
+      if(!toks.every(t=>nk.includes(t))) return false;
+    }
+    return true;
+  });
+  rows.sort((a,b)=>{
+    const ra=ranks.get(a), rb=ranks.get(b);
+    return ra-rb || Number(a.pb_sec)-Number(b.pb_sec) || norm(a.full_name).localeCompare(norm(b.full_name));
+  });
   const pages=Math.max(1,Math.ceil(rows.length/FFA_FULL_PAGE_SIZE));
   if(ffaFullPage>=pages) ffaFullPage=pages-1;
   const start=ffaFullPage*FFA_FULL_PAGE_SIZE;
