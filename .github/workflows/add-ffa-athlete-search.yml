@@ -1,0 +1,55 @@
+name: Add FFA athlete search
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/add-ffa-athlete-search.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Add athlete search to mobile and desktop
+        shell: python
+        run: |
+          from pathlib import Path
+
+          search_html = '''\n  <section class="card" id="ffaSearchCard" style="margin-bottom:12px">\n    <h2 style="margin:0 0 10px;font-size:16px">Rechercher un athlète FFA</h2>\n    <input id="ffaAthleteSearch" type="search" placeholder="Nom et prénom..." autocomplete="off" style="width:100%;margin:0">\n    <div id="ffaAthleteSearchMsg" class="msg" style="margin-top:8px"></div>\n    <div id="ffaAthleteSearchResults" style="display:none;margin-top:8px;border:1px solid var(--line);border-radius:10px;overflow:hidden"></div>\n  </section>\n'''
+
+          search_js = r'''\nlet ffaAthleteSearchTimer=null;\nfunction renderFfaAthleteSearch(){\n  const input=$("ffaAthleteSearch"), box=$("ffaAthleteSearchResults"), msg=$("ffaAthleteSearchMsg");\n  if(!input||!box||!msg) return;\n  const q=norm(input.value);\n  box.innerHTML=""; box.style.display="none";\n  if(!q){ msg.textContent=""; return; }\n  if(!ffaReady){ msg.textContent="Base FFA en cours de chargement…"; return; }\n  if(q.length<3){ msg.textContent="Saisis au moins 3 caractères."; return; }\n  const tokens=q.split(" ").filter(Boolean);\n  const found=[];\n  for(const p of ffa){\n    const nk=p.name_key||nameKey(p.full_name||"");\n    if(tokens.every(t=>nk.includes(t))){\n      found.push(p);\n      if(found.length>=100) break;\n    }\n  }\n  found.sort((a,b)=>{\n    const ya=Number(a.annee_naissance)||9999, yb=Number(b.annee_naissance)||9999;\n    return ya-yb || norm(a.full_name).localeCompare(norm(b.full_name));\n  });\n  if(!found.length){ msg.textContent="Aucun athlète trouvé."; return; }\n  msg.textContent=found.length+(found.length===100?"+":"")+" profil"+(found.length>1?"s":"")+" trouvé"+(found.length>1?"s":"")+".";\n  box.style.display="block";\n  box.innerHTML=found.map(p=>{\n    const url=getFfaProfileUrl(p);\n    const name=esc(p.full_name||"");\n    const meta=[p.annee_naissance||"année inconnue",p.sexe||"",p.pb_chrono||""].filter(Boolean).join(" · ");\n    const action=url\n      ? `<a href="${esc(url)}" target="_blank" rel="noopener" style="color:var(--accent);font-weight:700;text-decoration:none;white-space:nowrap">Fiche FFA ↗</a>`\n      : `<span class="small" style="white-space:nowrap">Pas de fiche FFA</span>`;\n    return `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 11px;border-bottom:1px solid var(--line)"><div style="min-width:0"><div style="font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</div><div class="small">${esc(meta)}</div></div>${action}</div>`;\n  }).join("");\n}\nconst _ffaAthleteSearch=$("ffaAthleteSearch");\nif(_ffaAthleteSearch){\n  _ffaAthleteSearch.addEventListener("input",()=>{\n    clearTimeout(ffaAthleteSearchTimer);\n    ffaAthleteSearchTimer=setTimeout(renderFfaAthleteSearch,220);\n  });\n}\n'''
+
+          # Mobile: insert search immediately under base status.
+          p=Path('mobile.html'); text=p.read_text(encoding='utf-8')
+          marker='  <div class="sub" id="baseStatus">Chargement de la base FFA…</div>\n'
+          if 'id="ffaAthleteSearch"' not in text:
+            if marker not in text: raise SystemExit('mobile HTML marker missing')
+            text=text.replace(marker, marker+search_html, 1)
+          js_marker='const $ = id => document.getElementById(id);\n'
+          if 'function renderFfaAthleteSearch()' not in text:
+            if js_marker not in text: raise SystemExit('mobile JS marker missing')
+            text=text.replace(js_marker, js_marker+search_js, 1)
+          p.write_text(text,encoding='utf-8')
+
+          # Desktop: insert search after subtitle and before main grid.
+          p=Path('app base.html'); text=p.read_text(encoding='utf-8')
+          marker='  <div class="grid">\n'
+          if 'id="ffaAthleteSearch"' not in text:
+            if marker not in text: raise SystemExit('desktop HTML marker missing')
+            text=text.replace(marker, search_html+'\n'+marker, 1)
+          if 'function renderFfaAthleteSearch()' not in text:
+            if js_marker not in text: raise SystemExit('desktop JS marker missing')
+            text=text.replace(js_marker, js_marker+search_js, 1)
+          p.write_text(text,encoding='utf-8')
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add mobile.html "app base.html"
+          git commit -m "Add FFA athlete profile search"
+          git push
