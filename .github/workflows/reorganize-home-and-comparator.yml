@@ -1,0 +1,21 @@
+name: Reorganize home and comparator
+on:
+  push:
+    paths:
+      - '.github/workflows/reorganize-home-and-comparator.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch files
+        run: python .github/scripts/reorganize_home_and_comparator.py
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add mobile.html "app base.html"
+          git commit -m "Reorganize FFA access and comparator controls"
+          git push
