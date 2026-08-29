@@ -19,3 +19,4 @@ jobs:
           git add mobile.html "app base.html" index.html
           git commit -m "Fix import to analysis flow"
           git push
+# retry
