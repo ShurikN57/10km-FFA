@@ -56,6 +56,8 @@ tr:hover td { background:#181d26 }
 .warn { color:var(--warn); background:#3b3012 }
 .no { color:var(--bad); background:#3a1d1d }
 .small { color:var(--muted); font-size:12px }
+#ffaAthleteSearchMsg:empty { display:none }
+#ffaFullMsg { font-size:11px; color:#7f8997; min-height:0 }
 .msg { margin-top:10px; color:var(--muted); min-height:18px; line-height:1.4 }
 textarea {
   width:100%; min-height:110px; resize:vertical; border:1px solid var(--line);
@@ -98,7 +100,7 @@ textarea {
     </div>
     <div id="ffaAthleteSearchMsg" class="msg" style="margin-top:8px"></div>
     <div id="ffaAthleteSearchResults" style="display:none;margin-top:8px;border:1px solid var(--line);border-radius:10px;overflow:hidden"></div>
-    <button type="button" id="openFfaRanking" style="width:100%;margin-top:6px">Voir le classement complet</button>
+    <button type="button" id="openFfaRanking" style="width:100%;margin-top:10px">Voir le classement complet</button>
   </section>
   <section class="card" id="ffaRankingCard" style="display:none;margin-bottom:12px">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px">
@@ -381,7 +383,7 @@ function renderFullFfaRanking(resetPage=false){
     const link=url ? `<a href="${esc(url)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:700">${esc(p.full_name||"")}</a>` : `<b>${esc(p.full_name||"")}</b>`;
     const meta=[p.annee_naissance||"—",p.sexe||"",catText].filter(Boolean).join(" · ");
     const rankSize=rank>=100000?"12px":rank>=10000?"13px":"14px";
-    return `<div style="display:grid;grid-template-columns:68px minmax(0,1fr) 72px;gap:6px;align-items:center;padding:9px 10px;border-bottom:1px solid var(--line)"><div style="font-weight:800;font-size:${rankSize};text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap">${esc(rankText)}</div><div style="min-width:0"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${link}</div><div class="small">${esc(meta)}</div></div><div style="text-align:right;font-weight:800;white-space:nowrap">${esc(p.pb_chrono||"—")}</div></div>`;
+    return `<div style="display:grid;grid-template-columns:68px minmax(0,1fr) 72px;gap:6px;align-items:center;padding:9px 10px;border-bottom:1px solid var(--line)"><div style="font-weight:800;font-size:${rankSize};text-align:center;font-variant-numeric:tabular-nums;white-space:nowrap">${esc(rankText)}</div><div style="min-width:0"><div style="overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.18">${link}</div><div class="small">${esc(meta)}</div></div><div style="text-align:right;font-weight:800;white-space:nowrap">${esc(p.pb_chrono||"—")}</div></div>`;
   }).join("") : `<div class="msg" style="padding:12px">Aucun athlète avec ces filtres.</div>`;
   $("ffaFullPrev").disabled=ffaFullPage<=0;
   $("ffaFullNext").disabled=ffaFullPage>=pages-1;
@@ -482,7 +484,16 @@ function compute() {
   render();
 }
 
+function updateRaceFilterButtons(){
+  const found=$("onlyFound"), no=$("onlyNo");
+  if(!found||!no) return;
+  [found,no].forEach(b=>{ b.style.background=""; b.style.borderColor=""; });
+  if(showOnlyFound){ found.style.background="#2458a6"; found.style.borderColor="#3973cf"; }
+  if(showOnlyNo){ no.style.background="#2458a6"; no.style.borderColor="#3973cf"; }
+}
+
 function render() {
+  updateRaceFilterButtons();
   const q=norm($("search").value);
   const rows=sortRows(result.filter(x=>{
     if(showOnlyNo && x.status!=="none") return false;
