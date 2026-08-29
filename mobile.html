@@ -722,7 +722,9 @@ $("paste").addEventListener("input", ()=>{
     if(!location.hash.startsWith('#import64=')) return;
     try{
       const text=fromB64(location.hash.slice('#import64='.length));
+      if(!text || text.trim().length<10) throw new Error('données importées vides');
       $("paste").value=text;
+      switchAppTab("analyse");
       history.replaceState(null,'',location.pathname+location.search);
       if(ffaReady) runPasteAnalysis(); else pendingAutoParse=true;
     }catch(e){
@@ -730,6 +732,7 @@ $("paste").addEventListener("input", ()=>{
     }
   }
   window.addEventListener('load',loadImport64);
+  window.addEventListener('hashchange',loadImport64);
   setTimeout(loadImport64,150);
 })();
 
