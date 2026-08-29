@@ -1,0 +1,21 @@
+name: Optimize ranking and search colors
+on:
+  push:
+    paths:
+      - '.github/workflows/optimize-ranking-and-search-colors.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch files
+        run: python .github/scripts/optimize_ranking_and_search_colors.py
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add mobile.html "app base.html"
+          git commit -m "Highlight search ranks and cache ranking scopes"
+          git push
