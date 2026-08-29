@@ -19,3 +19,4 @@ jobs:
           git add mobile.html "app base.html"
           git commit -m "Refine app header and full ranking numbers"
           git push
+# retry after script fix
