@@ -335,6 +335,8 @@ let ffaRankMode="sex";
 let ffaGeneralRank=new Map();
 let ffaSexRank=new Map();
 let ffaCategoryRank=new Map();
+let ffaGeneralSorted=[];
+let ffaScopeCache=new Map();
 function currentFfaCategory(p){
   const y=Number(p.annee_naissance);
   if(!Number.isFinite(y)) return "";
@@ -391,10 +393,15 @@ function buildFfaSexRanks(){
   ffaGeneralRank=new Map();
   ffaSexRank=new Map();
   ffaCategoryRank=new Map();
+  ffaScopeCache=new Map();
   const valid=ffa.filter(p=>Number.isFinite(Number(p.pb_sec)));
-  assignRanks(valid.slice(),ffaGeneralRank);
+  ffaGeneralSorted=valid.slice();
+  assignRanks(ffaGeneralSorted,ffaGeneralRank);
+  ffaScopeCache.set("||",{rows:ffaGeneralSorted,ranks:ffaGeneralRank});
   for(const sex of ["M","F"]){
-    assignRanks(valid.filter(p=>p.sexe===sex),ffaSexRank);
+    const arr=valid.filter(p=>p.sexe===sex);
+    assignRanks(arr,ffaSexRank);
+    ffaScopeCache.set(sex+"||",{rows:arr,ranks:ffaSexRank});
   }
   const groups=new Map();
   for(const p of valid){
@@ -435,13 +442,18 @@ function renderFfaAthleteSearch(){
     const name=esc(p.full_name||"");
     const cat=currentFfaCategory(p);
     const rank = ffaRankMode==="general" ? ffaGeneralRank.get(p) : ffaRankMode==="category" ? ffaCategoryRank.get(p) : ffaSexRank.get(p);
-    const rankText=rank ? (rank===1 ? "1er" : rank+"e") : "";
-    const scopeText=ffaRankMode==="category" ? (cat+(p.sexe||"")) : (p.sexe||"");
-    const meta=[p.annee_naissance||"année inconnue",scopeText,p.pb_chrono||"",rankText].filter(Boolean).join(" · ");
+    const rankText=rank ? (rank===1 ? "1er" : Number(rank).toLocaleString("fr-FR")+"e") : "";
+    const metaParts=[];
+    metaParts.push(esc(p.annee_naissance||"année inconnue"));
+    if(p.sexe) metaParts.push(esc(p.sexe));
+    if(ffaRankMode==="category" && cat) metaParts.push(`<span style="color:var(--accent);font-weight:700">${esc(cat)}</span>`);
+    if(p.pb_chrono) metaParts.push(esc(p.pb_chrono));
+    if(rankText) metaParts.push(`<span style="color:var(--accent);font-weight:700">${esc(rankText)}</span>`);
+    const meta=metaParts.join(" · ");
     const action=url
       ? `<a href="${esc(url)}" target="_blank" rel="noopener" style="color:var(--accent);font-weight:700;text-decoration:none;white-space:nowrap">Fiche FFA ↗</a>`
       : `<span class="small" style="white-space:nowrap">Pas de fiche FFA</span>`;
-    return `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 11px;border-bottom:1px solid var(--line)"><div style="min-width:0"><div style="font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</div><div class="small">${esc(meta)}</div></div>${action}</div>`;
+    return `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 11px;border-bottom:1px solid var(--line)"><div style="min-width:0"><div style="font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</div><div class="small">${meta}</div></div>${action}</div>`;
   }).join("");
 }
 document.querySelectorAll(".ffaRankModeBtn").forEach(btn=>{
@@ -463,7 +475,10 @@ function parsePbLimit(v){
   const m=v.match(/^(\d{1,2})[:h](\d{1,2})$/i);
   return m ? Number(m[1])*60+Number(m[2]) : null;
 }
-function scopedFullRankMap(sex,cat,year){
+function scopedFullRankData(sex,cat,year){
+  const key=[sex||"",cat||"",year||""].join("|");
+  const cached=ffaScopeCache.get(key);
+  if(cached) return cached;
   const scope=ffa.filter(p=>{
     if(!Number.isFinite(Number(p.pb_sec))) return false;
     if(sex && p.sexe!==sex) return false;
@@ -473,7 +488,9 @@ function scopedFullRankMap(sex,cat,year){
   });
   const map=new Map();
   assignRanks(scope,map);
-  return map;
+  const data={rows:scope,ranks:map};
+  ffaScopeCache.set(key,data);
+  return data;
 }
 function renderFullFfaRanking(resetPage=false){
   if(resetPage) ffaFullPage=0;
@@ -485,22 +502,20 @@ function renderFullFfaRanking(resetPage=false){
   const cat=$("ffaFullCategory").value;
   const year=String($("ffaFullYear").value||"").trim();
   const maxPb=parsePbLimit($("ffaFullMaxPb").value);
-  const ranks=scopedFullRankMap(sex,cat,year);
-  let rows=ffa.filter(p=>{
-    const rank=ranks.get(p);
-    if(rank==null) return false;
-    if(maxPb!=null && Number(p.pb_sec)>maxPb) return false;
-    if(q){
-      const nk=p.name_key||nameKey(p.full_name||"");
-      const toks=q.split(" ").filter(Boolean);
-      if(!toks.every(t=>nk.includes(t))) return false;
-    }
-    return true;
-  });
-  rows.sort((a,b)=>{
-    const ra=ranks.get(a), rb=ranks.get(b);
-    return ra-rb || Number(a.pb_sec)-Number(b.pb_sec) || norm(a.full_name).localeCompare(norm(b.full_name));
-  });
+  const scopeData=scopedFullRankData(sex,cat,year);
+  const ranks=scopeData.ranks;
+  let rows=scopeData.rows;
+  if(maxPb!=null || q){
+    const toks=q ? q.split(" ").filter(Boolean) : [];
+    rows=rows.filter(p=>{
+      if(maxPb!=null && Number(p.pb_sec)>maxPb) return false;
+      if(toks.length){
+        const nk=p.name_key||nameKey(p.full_name||"");
+        if(!toks.every(t=>nk.includes(t))) return false;
+      }
+      return true;
+    });
+  }
   const pages=Math.max(1,Math.ceil(rows.length/FFA_FULL_PAGE_SIZE));
   if(ffaFullPage>=pages) ffaFullPage=pages-1;
   const start=ffaFullPage*FFA_FULL_PAGE_SIZE;
