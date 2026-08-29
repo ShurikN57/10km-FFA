@@ -168,6 +168,20 @@ let sortDir = 1;
 const $ = id => document.getElementById(id);
 
 let ffaAthleteSearchTimer=null;
+let ffaSexRank=new Map();
+function buildFfaSexRanks(){
+  ffaSexRank=new Map();
+  for(const sex of ["M","F"]){
+    const arr=ffa.filter(p=>p.sexe===sex && Number.isFinite(Number(p.pb_sec)))
+      .sort((a,b)=>Number(a.pb_sec)-Number(b.pb_sec));
+    let prev=null, rank=0;
+    arr.forEach((p,i)=>{
+      const sec=Number(p.pb_sec);
+      if(sec!==prev){ rank=i+1; prev=sec; }
+      ffaSexRank.set(p,rank);
+    });
+  }
+}
 function renderFfaAthleteSearch(){
   const input=$("ffaAthleteSearch"), box=$("ffaAthleteSearchResults"), msg=$("ffaAthleteSearchMsg");
   if(!input||!box||!msg) return;
@@ -195,7 +209,9 @@ function renderFfaAthleteSearch(){
   box.innerHTML=found.map(p=>{
     const url=getFfaProfileUrl(p);
     const name=esc(p.full_name||"");
-    const meta=[p.annee_naissance||"année inconnue",p.sexe||"",p.pb_chrono||""].filter(Boolean).join(" · ");
+    const rank=ffaSexRank.get(p);
+    const rankText=rank ? (rank===1 ? "1er" : rank+"e") : "";
+    const meta=[p.annee_naissance||"année inconnue",p.sexe||"",p.pb_chrono||"",rankText].filter(Boolean).join(" · ");
     const action=url
       ? `<a href="${esc(url)}" target="_blank" rel="noopener" style="color:var(--accent);font-weight:700;text-decoration:none;white-space:nowrap">Fiche FFA ↗</a>`
       : `<span class="small" style="white-space:nowrap">Pas de fiche FFA</span>`;
@@ -329,6 +345,7 @@ async function loadFfaRows(){
 }
 loadFfaRows().then(rows=>{
   ffa=buildFfaFromCompact(rows);
+  buildFfaSexRanks();
   ffaReady=true;
   $("baseCount").textContent=ffa.length;
   $("ffaMsg").textContent="Base chargée : "+ffa.length+" profils.";
