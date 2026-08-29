@@ -98,15 +98,14 @@ body{
 }
 .wrap{
   max-width:640px;
-  padding:22px 18px 18px;
-  padding-top:calc(22px + env(safe-area-inset-top));
+  padding:16px 18px 18px;
+  padding-top:calc(16px + env(safe-area-inset-top));
 }
 .app-hero{padding:12px 3px 22px}
 .app-hero h1{font-size:34px;line-height:1.04;letter-spacing:-1.1px;margin:0 0 9px;font-weight:850}
 .app-base{font-size:14px;color:var(--muted);font-weight:550}
-.tab-panel{display:none;animation:tabFade .18s ease}
+.tab-panel{display:none}
 .tab-panel.active{display:block}
-@keyframes tabFade{from{opacity:.45;transform:translateY(4px)}to{opacity:1;transform:none}}
 .card,.premium-card{
   background:linear-gradient(145deg,rgba(24,29,39,.98),rgba(13,17,24,.98));
   border:1px solid #303846;
@@ -188,11 +187,7 @@ th{background:#141922}
 </head>
 <body>
 <div class="wrap">
-  <header class="app-hero">
-    <h1>Comparateur 10 km</h1>
-    <div id="baseStatus" class="app-base">Chargement de la base FFA…</div>
-  </header>
-
+  <div id="baseStatus" aria-hidden="true" style="display:none">Chargement de la base FFA…</div>
   <main>
     <section class="tab-panel" data-app-panel="classement">
       <div class="premium-card" id="ffaRankingCard">
@@ -311,12 +306,26 @@ const $ = id => document.getElementById(id);
 let activeAppTab="recherche";
 function switchAppTab(tab){
   if(!["classement","recherche","analyse"].includes(tab)) return;
+  if(tab===activeAppTab) return;
+
+  // iOS conserve parfois la position de défilement de l'onglet précédent.
+  // On remonte instantanément avant de modifier la hauteur du contenu.
+  window.scrollTo(0,0);
+  document.documentElement.scrollTop=0;
+  document.body.scrollTop=0;
+
   activeAppTab=tab;
   document.querySelectorAll("[data-app-panel]").forEach(p=>p.classList.toggle("active",p.getAttribute("data-app-panel")===tab));
   document.querySelectorAll("[data-app-tab]").forEach(b=>b.classList.toggle("active",b.getAttribute("data-app-tab")===tab));
+
   if(tab==="classement" && ffaReady && typeof renderFullFfaRanking==="function") renderFullFfaRanking(false);
   if(tab==="recherche" && ffaReady && typeof renderFfaAthleteSearch==="function") renderFfaAthleteSearch();
-  window.scrollTo({top:0,behavior:"smooth"});
+
+  requestAnimationFrame(()=>{
+    window.scrollTo(0,0);
+    document.documentElement.scrollTop=0;
+    document.body.scrollTop=0;
+  });
 }
 document.querySelectorAll("[data-app-tab]").forEach(btn=>btn.addEventListener("click",()=>switchAppTab(btn.getAttribute("data-app-tab"))));
 
