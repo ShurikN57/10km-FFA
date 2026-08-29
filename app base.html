@@ -104,7 +104,7 @@ body{
 .app-hero{padding:12px 3px 22px}
 .app-hero h1{font-size:34px;line-height:1.04;letter-spacing:-1.1px;margin:0 0 9px;font-weight:850}
 .app-base{font-size:14px;color:var(--muted);font-weight:550}
-.tab-panel{display:none}
+.tab-panel{display:none;padding-bottom:calc(120px + env(safe-area-inset-bottom))}
 .tab-panel.active{display:block}
 .card,.premium-card{
   background:linear-gradient(145deg,rgba(24,29,39,.98),rgba(13,17,24,.98));
@@ -131,11 +131,11 @@ input[type=search],input:not([type]),select{
 input::placeholder{color:#8b93a0;opacity:1}
 button{border-radius:14px;border-color:#354050;background:#1b202a}
 button.primary{
-  background:linear-gradient(180deg,#347cf4,#2766d9)!important;
-  border-color:#4a91ff!important;color:white!important;
-  box-shadow:0 7px 18px rgba(39,102,217,.22)
+  background:linear-gradient(180deg,#4c91ff,#3178e8)!important;
+  border-color:#67a1ff!important;color:white!important;
+  box-shadow:0 7px 18px rgba(76,145,255,.22)
 }
-button.primary:active{background:#2766d9!important}
+button.primary:active{background:#3178e8!important}
 .ffaRankModeBtn{min-height:46px}
 .stats{grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
 .stat{
@@ -168,10 +168,11 @@ th{background:#141922}
   color:#c8ced8;font-size:11px;font-weight:650;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px
 }
 .app-tab svg{width:25px;height:25px;stroke:currentColor;fill:none;stroke-width:1.9}
-.app-tab.active{background:linear-gradient(145deg,#373e49,#2c323c);color:#5b9dff;box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
+.app-tab.active{background:linear-gradient(145deg,#373e49,#2c323c);color:var(--accent);box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
 .app-tab span{line-height:1}
 .rank-filter-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:9px}
-.rank-filter-grid select,.rank-filter-grid input{width:100%;padding:11px}
+.rank-filter-grid select,.rank-filter-grid input{width:100%;min-width:0;padding:11px}
+.rank-filter-grid select{font-size:14px!important;padding:11px 30px 11px 10px}
 .rank-pagination{display:flex;gap:8px;margin-top:10px}
 .rank-pagination button{flex:1}
 #restoreCard{margin-bottom:12px}
@@ -458,11 +459,11 @@ function renderFfaAthleteSearch(){
 }
 document.querySelectorAll(".ffaRankModeBtn").forEach(btn=>{
   const mode=btn.getAttribute("data-mode");
-  if(mode===ffaRankMode){ btn.style.background="#2458a6"; btn.style.borderColor="#3973cf"; }
+  if(mode===ffaRankMode){ btn.style.background="#2f6fbe"; btn.style.borderColor="#4c91ff"; }
   btn.addEventListener("click",()=>{
     ffaRankMode=mode;
     document.querySelectorAll(".ffaRankModeBtn").forEach(b=>{ b.style.background=""; b.style.borderColor=""; });
-    btn.style.background="#2458a6"; btn.style.borderColor="#3973cf";
+    btn.style.background="#2f6fbe"; btn.style.borderColor="#4c91ff";
     renderFfaAthleteSearch();
   });
 });
@@ -627,8 +628,8 @@ function updateRaceFilterButtons(){
   const found=$("onlyFound"), no=$("onlyNo");
   if(!found||!no) return;
   [found,no].forEach(b=>{ b.style.background=""; b.style.borderColor=""; });
-  if(showOnlyFound){ found.style.background="#2458a6"; found.style.borderColor="#3973cf"; }
-  if(showOnlyNo){ no.style.background="#2458a6"; no.style.borderColor="#3973cf"; }
+  if(showOnlyFound){ found.style.background="#2f6fbe"; found.style.borderColor="#4c91ff"; }
+  if(showOnlyNo){ no.style.background="#2f6fbe"; no.style.borderColor="#4c91ff"; }
 }
 
 function render() {
