@@ -91,6 +91,11 @@ textarea {
   <section class="card" id="ffaSearchCard" style="margin-bottom:12px">
     <h2 style="margin:0 0 10px;font-size:16px">Rechercher un athlète FFA</h2>
     <input id="ffaAthleteSearch" type="search" placeholder="Nom et prénom..." autocomplete="off" style="width:100%;margin:0">
+    <div style="display:flex;gap:6px;margin-top:8px">
+      <button type="button" class="ffaRankModeBtn" data-mode="general" style="flex:1;padding:8px 6px;font-size:12px">Général</button>
+      <button type="button" class="ffaRankModeBtn" data-mode="sex" style="flex:1;padding:8px 6px;font-size:12px">H/F</button>
+      <button type="button" class="ffaRankModeBtn" data-mode="category" style="flex:1;padding:8px 6px;font-size:12px">Catégorie</button>
+    </div>
     <div id="ffaAthleteSearchMsg" class="msg" style="margin-top:8px"></div>
     <div id="ffaAthleteSearchResults" style="display:none;margin-top:8px;border:1px solid var(--line);border-radius:10px;overflow:hidden"></div>
   </section>
@@ -168,19 +173,80 @@ let sortDir = 1;
 const $ = id => document.getElementById(id);
 
 let ffaAthleteSearchTimer=null;
+let ffaRankMode="sex";
+let ffaGeneralRank=new Map();
 let ffaSexRank=new Map();
-function buildFfaSexRanks(){
-  ffaSexRank=new Map();
-  for(const sex of ["M","F"]){
-    const arr=ffa.filter(p=>p.sexe===sex && Number.isFinite(Number(p.pb_sec)))
-      .sort((a,b)=>Number(a.pb_sec)-Number(b.pb_sec));
-    let prev=null, rank=0;
-    arr.forEach((p,i)=>{
-      const sec=Number(p.pb_sec);
-      if(sec!==prev){ rank=i+1; prev=sec; }
-      ffaSexRank.set(p,rank);
-    });
+let ffaCategoryRank=new Map();
+function currentFfaCategory(p){
+  const y=Number(p.annee_naissance);
+  if(!Number.isFinite(y)) return "";
+  const afterSep2026 = new Date() >= new Date("2026-09-01T00:00:00");
+  if(afterSep2026){
+    if(y>=2005 && y<=2007) return "ES";
+    if(y>=1993 && y<=2004) return "SE";
+    if(y<=1992){
+      if(y>=1988) return "M0";
+      if(y>=1983) return "M1";
+      if(y>=1978) return "M2";
+      if(y>=1973) return "M3";
+      if(y>=1968) return "M4";
+      if(y>=1963) return "M5";
+      if(y>=1958) return "M6";
+      if(y>=1953) return "M7";
+      if(y>=1948) return "M8";
+      if(y>=1943) return "M9";
+      return "M10";
+    }
+    if(y>=2008 && y<=2009) return "JU";
+    if(y>=2010 && y<=2011) return "CA";
+    return "";
   }
+  if(y>=2004 && y<=2006) return "ES";
+  if(y>=1992 && y<=2003) return "SE";
+  if(y<=1991){
+    if(y>=1987) return "M0";
+    if(y>=1982) return "M1";
+    if(y>=1977) return "M2";
+    if(y>=1972) return "M3";
+    if(y>=1967) return "M4";
+    if(y>=1962) return "M5";
+    if(y>=1957) return "M6";
+    if(y>=1952) return "M7";
+    if(y>=1947) return "M8";
+    if(y>=1942) return "M9";
+    return "M10";
+  }
+  if(y>=2007 && y<=2008) return "JU";
+  if(y>=2009 && y<=2010) return "CA";
+  return "";
+}
+function assignRanks(arr,map){
+  arr.sort((a,b)=>Number(a.pb_sec)-Number(b.pb_sec));
+  let prev=null,rank=0;
+  arr.forEach((p,i)=>{
+    const sec=Number(p.pb_sec);
+    if(sec!==prev){rank=i+1;prev=sec;}
+    map.set(p,rank);
+  });
+}
+function buildFfaSexRanks(){
+  ffaGeneralRank=new Map();
+  ffaSexRank=new Map();
+  ffaCategoryRank=new Map();
+  const valid=ffa.filter(p=>Number.isFinite(Number(p.pb_sec)));
+  assignRanks(valid.slice(),ffaGeneralRank);
+  for(const sex of ["M","F"]){
+    assignRanks(valid.filter(p=>p.sexe===sex),ffaSexRank);
+  }
+  const groups=new Map();
+  for(const p of valid){
+    const cat=currentFfaCategory(p);
+    if(!cat||!p.sexe) continue;
+    const key=cat+"|"+p.sexe;
+    if(!groups.has(key)) groups.set(key,[]);
+    groups.get(key).push(p);
+  }
+  for(const arr of groups.values()) assignRanks(arr,ffaCategoryRank);
 }
 function renderFfaAthleteSearch(){
   const input=$("ffaAthleteSearch"), box=$("ffaAthleteSearchResults"), msg=$("ffaAthleteSearchMsg");
@@ -209,15 +275,27 @@ function renderFfaAthleteSearch(){
   box.innerHTML=found.map(p=>{
     const url=getFfaProfileUrl(p);
     const name=esc(p.full_name||"");
-    const rank=ffaSexRank.get(p);
+    const cat=currentFfaCategory(p);
+    const rank = ffaRankMode==="general" ? ffaGeneralRank.get(p) : ffaRankMode==="category" ? ffaCategoryRank.get(p) : ffaSexRank.get(p);
     const rankText=rank ? (rank===1 ? "1er" : rank+"e") : "";
-    const meta=[p.annee_naissance||"année inconnue",p.sexe||"",p.pb_chrono||"",rankText].filter(Boolean).join(" · ");
+    const scopeText=ffaRankMode==="category" ? (cat+(p.sexe||"")) : (p.sexe||"");
+    const meta=[p.annee_naissance||"année inconnue",scopeText,p.pb_chrono||"",rankText].filter(Boolean).join(" · ");
     const action=url
       ? `<a href="${esc(url)}" target="_blank" rel="noopener" style="color:var(--accent);font-weight:700;text-decoration:none;white-space:nowrap">Fiche FFA ↗</a>`
       : `<span class="small" style="white-space:nowrap">Pas de fiche FFA</span>`;
     return `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 11px;border-bottom:1px solid var(--line)"><div style="min-width:0"><div style="font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</div><div class="small">${esc(meta)}</div></div>${action}</div>`;
   }).join("");
 }
+document.querySelectorAll(".ffaRankModeBtn").forEach(btn=>{
+  const mode=btn.getAttribute("data-mode");
+  if(mode===ffaRankMode){ btn.style.background="#2458a6"; btn.style.borderColor="#3973cf"; }
+  btn.addEventListener("click",()=>{
+    ffaRankMode=mode;
+    document.querySelectorAll(".ffaRankModeBtn").forEach(b=>{ b.style.background=""; b.style.borderColor=""; });
+    btn.style.background="#2458a6"; btn.style.borderColor="#3973cf";
+    renderFfaAthleteSearch();
+  });
+});
 const _ffaAthleteSearch=$("ffaAthleteSearch");
 if(_ffaAthleteSearch){
   _ffaAthleteSearch.addEventListener("input",()=>{
