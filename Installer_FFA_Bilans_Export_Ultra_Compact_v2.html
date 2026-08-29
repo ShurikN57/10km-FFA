@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FFA Bilans — Export fusionné Ultra Compact v2</title>
+<style>
+body{font-family:system-ui;background:#0f1115;color:#fff;padding:24px}
+.wrap{max-width:860px;margin:auto}
+.card{background:#171a21;padding:20px;border-radius:14px;margin:14px 0}
+a.btn{display:inline-block;background:#c0392b;color:#fff;text-decoration:none;font-weight:800;padding:14px 18px;border-radius:10px}
+code{background:#242833;padding:2px 5px;border-radius:4px}
+li{margin:8px 0;line-height:1.45}
+</style>
+</head>
+<body><div class="wrap">
+<h1>FFA Bilans — Export fusionné Ultra Compact v2</h1>
+<div class="card">
+<p>Glisse ce bouton dans ta barre de favoris :</p>
+<p><a class="btn" href="javascript:(async()=>{const DB='FFA_BILANS_AUTO_V1',STORE='pages';const clean=s=>(s??'').toString().replace(/\s+/g,' ').trim();const norm=s=>clean(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9]+/g,' ').trim().replace(/\s+/g,' ');const openDb=()=>new Promise((ok,no)=>{const q=indexedDB.open(DB,1);q.onsuccess=()=>ok(q.result);q.onerror=()=>no(q.error)});const getAll=db=>new Promise((ok,no)=>{const q=db.transaction(STORE,'readonly').objectStore(STORE).getAll();q.onsuccess=()=>ok(q.result||[]);q.onerror=()=>no(q.error)});const download=(name,obj)=>{const b=new Blob([JSON.stringify(obj)],{type:'application/json'});const u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),5000)};const db=await openDb(),pages=await getAll(db);db.close();if(!pages.length){alert('Aucune collecte FFA Bilans enregistrée.');return}const yearsIn=prompt('Années à fusionner :','2024,2025,2026');if(yearsIn===null)return;const sexesIn=prompt('Sexes à fusionner :','M,F');if(sexesIn===null)return;const years=[...new Set(yearsIn.split(',').map(x=>x.trim()).filter(Boolean))];const sexes=[...new Set(sexesIn.split(',').map(x=>x.trim().toUpperCase()).filter(Boolean))];const selected=pages.filter(p=>years.includes(String(p.year||''))&&sexes.includes(String(p.sex||'').toUpperCase()));if(!selected.length){alert('Aucune page correspondant aux années/sexes demandés.');return}let raw=[];for(const p of selected){const y=String(p.year||''),sx=String(p.sex||'').toUpperCase();for(const r of(Array.isArray(p.rows)?p.rows:[])){const name=clean(r.name),by=clean(r.birth_year),id=clean(r.athlete_ffa_id),sec=Number(r.performance_sec);if(!name||!Number.isFinite(sec)||sec<=0)continue;raw.push({name,nk:norm(name),by,sex:sx||clean(r.sex).toUpperCase(),id,sec:Math.round(sec),sourceYear:y})}}const audit={version:2,years,sexes,pages:selected.length,performances_valides:raw.length,merges_par_id:0,merges_nom_annee_sexe:0,merges_annee_manquante_candidat_unique:0,doublons_id_conflit:[],ambigus_annee_manquante:[],profils_finaux:0,avec_id:0,sans_id:0};const byId=new Map();for(const r of raw.filter(x=>x.id)){const k=r.id,p=byId.get(k);if(!p){byId.set(k,{name:r.name,nk:r.nk,by:r.by,sex:r.sex,id:r.id,sec:r.sec,years:new Set([r.sourceYear])})}else{audit.merges_par_id++;if(!p.by&&r.by)p.by=r.by;if(r.sec<p.sec)p.sec=r.sec;p.years.add(r.sourceYear)}}const idProfiles=[...byId.values()];const idByNameSex=new Map();for(const p of idProfiles){const k=p.nk+'|'+p.sex;if(!idByNameSex.has(k))idByNameSex.set(k,[]);idByNameSex.get(k).push(p)}const idsByExact=new Map();for(const p of idProfiles){const k=p.nk+'|'+p.by+'|'+p.sex;if(!idsByExact.has(k))idsByExact.set(k,[]);idsByExact.get(k).push(p)}for(const[k,a]of idsByExact){const ids=[...new Set(a.map(x=>x.id))];if(a[0].by&&ids.length>1)audit.doublons_id_conflit.push({cle:k,ids,noms:a.map(x=>x.name)})}const noIdGroups=new Map();for(const r of raw.filter(x=>!x.id)){const k=r.nk+'|'+r.by+'|'+r.sex;let p=noIdGroups.get(k);if(!p){p={name:r.name,nk:r.nk,by:r.by,sex:r.sex,id:'',sec:r.sec,years:new Set([r.sourceYear]),count:1};noIdGroups.set(k,p)}else{audit.merges_nom_annee_sexe++;p.count++;if(r.sec<p.sec)p.sec=r.sec;p.years.add(r.sourceYear)}}const unresolved=[];for(const p of noIdGroups.values()){const candidates=idByNameSex.get(p.nk+'|'+p.sex)||[];let target=null,reason='';if(p.by){const exact=candidates.filter(c=>c.by===p.by);if(exact.length===1){target=exact[0];reason='exact'}}else{if(candidates.length===1){target=candidates[0];reason='missingYearUnique'}}if(target){if(p.sec<target.sec)target.sec=p.sec;if(!target.by&&p.by)target.by=p.by;for(const y of p.years)target.years.add(y);if(reason==='exact')audit.merges_nom_annee_sexe++;else audit.merges_annee_manquante_candidat_unique++}else{if(!p.by&&candidates.length>1){audit.ambigus_annee_manquante.push({nom:p.name,sexe:p.sex,chrono_sec:p.sec,candidats:candidates.map(c=>({nom:c.name,annee:c.by,id:c.id,chrono_sec:c.sec}))})}unresolved.push(p)}}const finals=idProfiles.concat(unresolved);const compact=finals.map(p=>[p.name,p.by||'',p.sex||'',p.sec,'','','',p.id||'']).sort((a,b)=>norm(a[0]).localeCompare(norm(b[0]),'fr')||String(a[1]).localeCompare(String(b[1]))||String(a[2]).localeCompare(String(b[2])));audit.profils_finaux=compact.length;audit.avec_id=compact.filter(r=>r[7]).length;audit.sans_id=compact.length-audit.avec_id;download('FFA_BASE_ULTRA_2024_2025_2026_MF.json',compact);await new Promise(r=>setTimeout(r,700));download('FFA_BASE_ULTRA_2024_2025_2026_MF_AUDIT.json',audit);alert('Fusion terminée.\n\n'+compact.length+' profils finaux\n'+audit.avec_id+' avec ID FFA\n'+audit.sans_id+' sans ID\n\nFusions par ID : '+audit.merges_par_id+'\nFusions nom+année+sexe : '+audit.merges_nom_annee_sexe+'\nAnnée absente rattachée à candidat unique : '+audit.merges_annee_manquante_candidat_unique+'\nCas ambigus laissés séparés : '+audit.ambigus_annee_manquante.length+'\nConflits plusieurs IDs : '+audit.doublons_id_conflit.length)}).catch(e=>alert('Erreur export fusionné : '+(e&&e.message?e.message:e)));">FFA Bilans Export Final 2024-2026</a></p>
+</div>
+<div class="card">
+<h2>Ce que fait cette version</h2>
+<ul>
+<li>Lit directement les 6 scans enregistrés dans IndexedDB : 2024/2025/2026 × M/F.</li>
+<li>Produit <b>un seul fichier final</b> au format de <code>ffa_base.json</code>.</li>
+<li>Conserve le <b>meilleur chrono</b> trouvé sur les trois années.</li>
+<li>Fusionne automatiquement les lignes portant le même <b>ID FFA</b>.</li>
+<li>Fusionne les lignes sans ID avec un profil ID si <b>nom normalisé + année + sexe</b> concordent.</li>
+<li>Si l'année manque, rattache seulement lorsqu'il existe <b>un unique candidat ID</b> avec le même nom + sexe.</li>
+<li>Ne fusionne jamais automatiquement deux IDs FFA distincts.</li>
+<li>Génère aussi un fichier <b>AUDIT</b> avec les cas ambigus et les conflits d'ID.</li>
+</ul>
+</div>
+<div class="card">
+<h2>Fichiers générés</h2>
+<p><code>FFA_BASE_ULTRA_2024_2025_2026_MF.json</code></p>
+<p><code>FFA_BASE_ULTRA_2024_2025_2026_MF_AUDIT.json</code></p>
+</div>
+</div></body></html>
