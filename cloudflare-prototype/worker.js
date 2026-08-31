@@ -42,7 +42,7 @@ function ftsQueryFromName(value) {
 function categoryBounds(birthYear) {
   const y = Number(birthYear);
   if (!Number.isFinite(y)) return null;
-  const afterSep2026 = new Date() >= new Date('2026-09-01T00:00:00Z');
+  const afterSep2026 = new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Paris',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()) >= '2026-09-01';
   if (afterSep2026) {
     if (y >= 2010 && y <= 2011) return [2010, 2011, 'CA'];
     if (y >= 2008 && y <= 2009) return [2008, 2009, 'JU'];
@@ -81,7 +81,7 @@ function categoryBounds(birthYear) {
 
 function categoryYears(category) {
   const cat = String(category || '').toUpperCase();
-  const afterSep2026 = new Date() >= new Date('2026-09-01T00:00:00Z');
+  const afterSep2026 = new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Paris',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()) >= '2026-09-01';
   const groups = afterSep2026 ? {
     CA:[2010,2011], JU:[2008,2009], ES:[2005,2007], SE:[1993,2004],
     M0:[1988,1992], M1:[1983,1987], M2:[1978,1982], M3:[1973,1977],
@@ -117,7 +117,7 @@ export default {
 
       const ftsQuery = ftsQueryFromName(q);
       if (!ftsQuery) return json(request, { rows: [] });
-      const afterSep2026 = new Date() >= new Date('2026-09-01T00:00:00Z');
+      const afterSep2026 = new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Paris',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()) >= '2026-09-01';
       const rankColumn = mode === 'general'
         ? 'rank_general'
         : mode === 'category'
@@ -210,7 +210,7 @@ export default {
       if (ftsQuery) { where.push('a.id IN (SELECT rowid FROM athlete_fts WHERE athlete_fts MATCH ?)'); binds.push(ftsQuery); }
       else if (q) { where.push('a.name_key LIKE ?'); binds.push(`%${q}%`); }
 
-      const afterSep2026 = new Date() >= new Date('2026-09-01T00:00:00Z');
+      const afterSep2026 = new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Paris',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()) >= '2026-09-01';
       let rankExpr = 'sr.rank_general';
       if (year) rankExpr = sex ? 'yr.rank_sex_year' : 'yr.rank_year';
       else if (category) {

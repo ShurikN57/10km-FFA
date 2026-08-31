@@ -192,6 +192,8 @@ th{background:#141922}
   <div class="distance-switch" role="group" aria-label="Distance FFA">
     <button type="button" class="distance-btn" data-distance="5k">5 km</button>
     <button type="button" class="distance-btn active" data-distance="10k">10 km</button>
+    <button type="button" class="distance-btn" data-distance="semi">Semi</button>
+    <button type="button" class="distance-btn" data-distance="marathon">Marathon</button>
   </div>
   <div id="baseStatus" aria-hidden="true" style="display:none">Chargement de la base FFA…</div>
   <main>
@@ -320,7 +322,9 @@ let ffaLoadingDistance=null;
 
 const FFA_DISTANCES={
   "5k":{label:"5 km",file:"./ffa_5km_2024_2026.json.gz",export:"comparaison_ffa_5km.csv",minPb:"PB min, ex 15:00",maxPb:"PB max, ex 20:00"},
-  "10k":{label:"10 km",file:"./ffa_base.json.gz",export:"comparaison_ffa_10km.csv",minPb:"PB min, ex 30:00",maxPb:"PB max, ex 35:00"}
+  "10k":{label:"10 km",file:"./ffa_base.json.gz",export:"comparaison_ffa_10km.csv",minPb:"PB min, ex 30:00",maxPb:"PB max, ex 35:00"},
+  "semi":{label:"Semi-marathon",file:"./ffa_semi_2024_2026.json.gz",export:"comparaison_ffa_semi.csv",minPb:"PB min, ex 1:05:00",maxPb:"PB max, ex 1:30:00"},
+  "marathon":{label:"Marathon",file:"./ffa_marathon_2024_2026.json.gz",export:"comparaison_ffa_marathon.csv",minPb:"PB min, ex 2:15:00",maxPb:"PB max, ex 3:30:00"}
 };
 let currentDistance=localStorage.getItem("comparateur_ffa_distance");
 if(!FFA_DISTANCES[currentDistance]) currentDistance="10k";
