@@ -1,0 +1,47 @@
+name: Build D1 general ranks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/build-d1-general-ranks.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build precomputed general ranks
+        run: |
+          cat > /tmp/general_ranks.sql <<'SQL'
+          DROP TABLE IF EXISTS athlete_general_rank;
+          CREATE TABLE athlete_general_rank (
+            athlete_id INTEGER PRIMARY KEY,
+            distance TEXT NOT NULL,
+            rank INTEGER NOT NULL
+          );
+          INSERT INTO athlete_general_rank(athlete_id,distance,rank)
+          SELECT id,distance,RANK() OVER (PARTITION BY distance ORDER BY pb_sec ASC)
+          FROM athletes;
+          CREATE INDEX idx_general_rank_distance_rank ON athlete_general_rank(distance,rank,athlete_id);
+
+          DROP TABLE IF EXISTS ffa_distance_stats;
+          CREATE TABLE ffa_distance_stats (
+            distance TEXT PRIMARY KEY,
+            total INTEGER NOT NULL
+          );
+          INSERT INTO ffa_distance_stats(distance,total)
+          SELECT distance,COUNT(*) FROM athletes GROUP BY distance;
+          SQL
+          npx --yes wrangler@latest d1 execute ffa-comparateur --remote --file=/tmp/general_ranks.sql --config=cloudflare-prototype/wrangler.toml --yes
+      - name: Verify precomputed ranks
+        run: |
+          npx --yes wrangler@latest d1 execute ffa-comparateur --remote --command="SELECT s.distance,s.total,MIN(r.rank) AS min_rank,MAX(r.rank) AS max_rank FROM ffa_distance_stats s JOIN athlete_general_rank r ON r.distance=s.distance GROUP BY s.distance,s.total ORDER BY s.distance;" --config=cloudflare-prototype/wrangler.toml --yes
