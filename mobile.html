@@ -565,7 +565,7 @@ function ffaFullSortHeader(){
   const cols=[['rank','Position'],['name','Nom'],['time','Temps']];
   return `<div style="display:grid;grid-template-columns:68px minmax(0,1fr) 72px;gap:6px;align-items:center;padding:7px 10px;border-bottom:1px solid var(--line);background:#141922">${cols.map(([key,label])=>{
     const active=ffaFullSort===key;
-    const arrow=active?(ffaFullSortDir==='asc'?'▲':'▼'):'↕';
+    const arrow=active?(ffaFullSortDir==='asc'?'▲':'▼'):'△ ▽';
     const align=key==='rank'?'center':key==='time'?'right':'left';
     return `<button type="button" data-ffa-full-sort="${key}" style="min-height:34px;padding:5px 3px;border:0;background:transparent;color:${active?'var(--accent)':'#c8d0dc'};font-size:11px;text-align:${align};box-shadow:none">${label} ${arrow}</button>`;
   }).join('')}</div>`;
