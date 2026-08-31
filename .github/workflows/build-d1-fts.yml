@@ -1,0 +1,32 @@
+name: Build D1 FTS search index
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/build-d1-fts.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-fts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create FTS5 trigram index
+        run: |
+          cat > /tmp/fts.sql <<'SQL'
+          DROP TABLE IF EXISTS athlete_fts;
+          CREATE VIRTUAL TABLE athlete_fts USING fts5(name_key, distance UNINDEXED, content='athletes', content_rowid='id', tokenize='trigram');
+          INSERT INTO athlete_fts(rowid,name_key,distance) SELECT id,name_key,distance FROM athletes;
+          SQL
+          npx --yes wrangler@latest d1 execute ffa-comparateur --remote --file=/tmp/fts.sql --config=cloudflare-prototype/wrangler.toml --yes
+      - name: Verify FTS5 index
+        run: |
+          npx --yes wrangler@latest d1 execute ffa-comparateur --remote --command="SELECT COUNT(*) AS n FROM athlete_fts WHERE athlete_fts MATCH 'MACHOUCHE';" --config=cloudflare-prototype/wrangler.toml --yes
