@@ -5,5 +5,19 @@
   "display": "standalone",
   "background_color": "#0f1115",
   "theme_color": "#0f1115",
-  "lang": "fr"
+  "lang": "fr",
+  "icons": [
+    {
+      "src": "./icons/le-routard.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/le-routard.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
 }
