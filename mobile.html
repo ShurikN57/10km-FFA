@@ -329,6 +329,7 @@ let ffaRankMode="sex";
 let ffaGeneralRank=new Map();
 let ffaSexRank=new Map();
 let ffaCategoryRank=new Map();
+let ffaGeneralRows=[];
 function currentFfaCategory(p){
   const y=Number(p.annee_naissance);
   if(!Number.isFinite(y)) return "";
@@ -386,7 +387,10 @@ function buildFfaSexRanks(){
   ffaSexRank=new Map();
   ffaCategoryRank=new Map();
   const valid=ffa.filter(p=>Number.isFinite(Number(p.pb_sec)));
-  assignRanks(valid.slice(),ffaGeneralRank);
+  // Conserve une seule vue triée du classement général pour éviter
+  // de retrier les 527k profils à chaque ouverture de l'onglet.
+  ffaGeneralRows=valid.slice();
+  assignRanks(ffaGeneralRows,ffaGeneralRank);
   for(const sex of ["M","F"]){
     assignRanks(valid.filter(p=>p.sexe===sex),ffaSexRank);
   }
@@ -484,22 +488,30 @@ function renderFullFfaRanking(resetPage=false){
   const cat=$("ffaFullCategory").value;
   const year=String($("ffaFullYear").value||"").trim();
   const maxPb=parsePbLimit($("ffaFullMaxPb").value);
-  const ranks=scopedFullRankMap(sex,cat,year);
-  let rows=ffa.filter(p=>{
-    const rank=ranks.get(p);
-    if(rank==null) return false;
-    if(maxPb!=null && Number(p.pb_sec)>maxPb) return false;
-    if(q){
-      const nk=p.name_key||nameKey(p.full_name||"");
-      const toks=q.split(" ").filter(Boolean);
-      if(!toks.every(t=>nk.includes(t))) return false;
-    }
-    return true;
-  });
-  rows.sort((a,b)=>{
-    const ra=ranks.get(a), rb=ranks.get(b);
-    return ra-rb || Number(a.pb_sec)-Number(b.pb_sec) || norm(a.full_name).localeCompare(norm(b.full_name));
-  });
+  const plainGeneral=!sex && !cat && !year && maxPb==null && !q;
+  let ranks, rows;
+  if(plainGeneral){
+    // Chemin rapide : classement général déjà trié au chargement.
+    ranks=ffaGeneralRank;
+    rows=ffaGeneralRows;
+  }else{
+    ranks=scopedFullRankMap(sex,cat,year);
+    const toks=q ? q.split(" ").filter(Boolean) : [];
+    rows=ffa.filter(p=>{
+      const rank=ranks.get(p);
+      if(rank==null) return false;
+      if(maxPb!=null && Number(p.pb_sec)>maxPb) return false;
+      if(toks.length){
+        const nk=p.name_key||nameKey(p.full_name||"");
+        if(!toks.every(t=>nk.includes(t))) return false;
+      }
+      return true;
+    });
+    rows.sort((a,b)=>{
+      const ra=ranks.get(a), rb=ranks.get(b);
+      return ra-rb || Number(a.pb_sec)-Number(b.pb_sec) || norm(a.full_name).localeCompare(norm(b.full_name));
+    });
+  }
   const pages=Math.max(1,Math.ceil(rows.length/FFA_FULL_PAGE_SIZE));
   if(ffaFullPage>=pages) ffaFullPage=pages-1;
   const start=ffaFullPage*FFA_FULL_PAGE_SIZE;
