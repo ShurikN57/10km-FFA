@@ -719,12 +719,27 @@ async function loadFfaRows(distance){
   const cfg=FFA_DISTANCES[distance];
   const r=await fetch(cfg.file,{cache:"no-store"});
   if(!r.ok) throw new Error("HTTP "+r.status);
-  if(!("DecompressionStream" in window)) throw new Error("Décompression gzip non prise en charge par ce navigateur");
-  if(!r.body) throw new Error("Flux de la base FFA indisponible");
-  const stream=r.body.pipeThrough(new DecompressionStream("gzip"));
-  const text=await new Response(stream).text();
+
+  // Selon Safari / GitHub Pages, un fichier .gz peut arriver soit encore
+  // compressé, soit déjà décompressé par la couche HTTP. On inspecte donc
+  // les deux premiers octets au lieu de forcer systématiquement gunzip.
+  const buf=await r.arrayBuffer();
+  const bytes=new Uint8Array(buf);
+  let text;
+  const isGzip=bytes.length>=2 && bytes[0]===0x1f && bytes[1]===0x8b;
+
+  if(isGzip){
+    if(!("DecompressionStream" in window)) throw new Error("Décompression gzip non prise en charge par ce navigateur");
+    const stream=new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"));
+    text=await new Response(stream).text();
+  }else{
+    text=new TextDecoder("utf-8").decode(bytes);
+  }
+
   const data=JSON.parse(text);
-  return Array.isArray(data) ? data : (Array.isArray(data.rows) ? data.rows : []);
+  const rows=Array.isArray(data) ? data : (Array.isArray(data.rows) ? data.rows : []);
+  if(!rows.length) throw new Error("Base vide ou format non reconnu");
+  return rows;
 }
 async function loadFfaDistance(distance){
   if(!FFA_DISTANCES[distance]) return;

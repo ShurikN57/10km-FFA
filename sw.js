@@ -1,5 +1,5 @@
-const SHELL_CACHE='comparateur-ffa-shell-v6';
-const DATA_CACHE='comparateur-ffa-data-v2';
+const SHELL_CACHE='comparateur-ffa-shell-v7';
+const DATA_CACHE='comparateur-ffa-data-v3';
 
 self.addEventListener('install',e=>{self.skipWaiting()});
 
