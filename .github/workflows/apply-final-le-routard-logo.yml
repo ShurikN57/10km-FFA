@@ -4,7 +4,6 @@ on:
   push:
     branches: [main]
     paths:
-      - 'icons/le-routard-final.png.b64'
       - '.github/workflows/apply-final-le-routard-logo.yml'
   workflow_dispatch:
 
@@ -16,17 +15,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install ImageMagick
+      - name: Decode approved PNG icons
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y imagemagick
-      - name: Build approved PNG icons
-        run: |
-          base64 -d icons/le-routard-final.png.b64 > icons/le-routard-final-512.png
-          convert icons/le-routard-final-512.png -resize 512x512 icons/icon-512x512.png
-          convert icons/le-routard-final-512.png -resize 192x192 icons/icon-192x192.png
-          convert icons/le-routard-final-512.png -resize 180x180 icons/apple-touch-icon.png
-          convert icons/le-routard-final-512.png -resize 32x32 icons/favicon-32x32.png
+          base64 -d icons/le-routard-final.png.b64 > icons/icon-512x512.png
+          base64 -d icons/icon-192x192.png.b64 > icons/icon-192x192.png
+          base64 -d icons/apple-touch-icon.png.b64 > icons/apple-touch-icon.png
+          base64 -d icons/favicon-32x32.png.b64 > icons/favicon-32x32.png
       - name: Update PWA references
         run: |
           python3 - <<'PY'
@@ -54,7 +48,7 @@ jobs:
           PY
       - name: Commit final logo and cleanup
         run: |
-          rm -f icons/le-routard-final.png.b64 icons/le-routard-final-512.png icons/placeholder.txt .github/workflows/apply-final-le-routard-logo.yml
+          rm -f icons/le-routard-final.png.b64 icons/icon-192x192.png.b64 icons/apple-touch-icon.png.b64 icons/favicon-32x32.png.b64 icons/placeholder.txt .github/workflows/apply-final-le-routard-logo.yml
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
