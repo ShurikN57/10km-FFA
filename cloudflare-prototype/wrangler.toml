@@ -5,4 +5,4 @@ compatibility_date = "2026-08-31"
 [[d1_databases]]
 binding = "DB"
 database_name = "ffa-comparateur"
-database_id = "REPLACE_WITH_D1_DATABASE_ID"
+database_id = "110af62a-034e-471d-ae99-53971c754f7b"
