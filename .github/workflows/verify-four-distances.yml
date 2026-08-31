@@ -16,20 +16,24 @@ jobs:
       - name: Verify health ranking and search
         run: |
           set -e
+          BASE='https://ffa-comparateur-api.57compte2.workers.dev'
+          curl -fsS "$BASE/health" -o /tmp/health.json
+          curl -fsS "$BASE/ranking?distance=semi&page=1" -o /tmp/semi-ranking.json
+          curl -fsS "$BASE/ranking?distance=marathon&page=1" -o /tmp/marathon-ranking.json
+          curl -fsS "$BASE/search?distance=semi&q=DAGUINOS&mode=general" -o /tmp/semi-search.json
+          curl -fsS "$BASE/search?distance=marathon&q=AMDOUNI&mode=general" -o /tmp/marathon-search.json
           python - <<'PY'
-          import json,urllib.request
-          base='https://ffa-comparateur-api.57compte2.workers.dev'
-          def get(path):
-              with urllib.request.urlopen(base+path,timeout=30) as r:
-                  return json.load(r)
-          h=get('/health')
+          import json
+          def read(p):
+              with open(p,encoding='utf-8') as f:return json.load(f)
+          h=read('/tmp/health.json')
+          semi=read('/tmp/semi-ranking.json')
+          mara=read('/tmp/marathon-ranking.json')
+          ss=read('/tmp/semi-search.json')
+          ms=read('/tmp/marathon-search.json')
           assert h.get('ok') is True and h.get('athletes')==1445655,h
-          semi=get('/ranking?distance=semi&page=1')
-          mara=get('/ranking?distance=marathon&page=1')
           assert semi.get('total')==497767 and semi.get('rows'),semi
           assert mara.get('total')==297166 and mara.get('rows'),mara
-          ss=get('/search?distance=semi&q=DAGUINOS&mode=general')
-          ms=get('/search?distance=marathon&q=AMDOUNI&mode=general')
           assert any('DAGUINOS' in str(x.get('full_name','')).upper() for x in ss.get('rows',[])),ss
           assert any('AMDOUNI' in str(x.get('full_name','')).upper() for x in ms.get('rows',[])),ms
           print('health',h)
