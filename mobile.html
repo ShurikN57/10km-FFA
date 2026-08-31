@@ -6,9 +6,9 @@
 <meta name="theme-color" content="#0f1115">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Comparateur 10K">
+<meta name="apple-mobile-web-app-title" content="Comparateur FFA">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>Comparateur 10 km — mobile</title>
+<title>Comparateur FFA — mobile</title>
 <script src="./core.js"></script>
 <style>
 :root {
@@ -172,6 +172,11 @@ th{background:#141922}
   .app-tabbar{grid-template-columns:repeat(2,1fr)!important}
 }
 
+
+.distance-switch{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:0 0 14px;padding:5px;background:rgba(25,30,39,.88);border:1px solid #3a4350;border-radius:18px}
+.distance-btn{min-height:44px;border:0!important;background:transparent!important;color:#c8ced8!important;border-radius:13px!important;font-size:14px!important;font-weight:800!important;padding:8px!important}
+.distance-btn.active{background:linear-gradient(180deg,#4c91ff,#3178e8)!important;color:#fff!important;box-shadow:0 5px 14px rgba(76,145,255,.20)}
+
 @media(max-width:390px){
   .wrap{padding-left:14px;padding-right:14px}
   .app-hero h1{font-size:31px}
@@ -184,6 +189,10 @@ th{background:#141922}
 </head>
 <body>
 <div class="wrap">
+  <div class="distance-switch" role="group" aria-label="Distance FFA">
+    <button type="button" class="distance-btn" data-distance="5k">5 km</button>
+    <button type="button" class="distance-btn active" data-distance="10k">10 km</button>
+  </div>
   <div id="baseStatus" aria-hidden="true" style="display:none">Chargement de la base FFA…</div>
   <main>
     <section class="tab-panel" data-app-panel="classement">
@@ -194,7 +203,7 @@ th{background:#141922}
           </div>
           <div class="section-copy">
             <h2>Classement FFA</h2>
-            <p>Consultez et filtrez le classement complet des 10 km.</p>
+            <p>Consultez et filtrez le classement complet des <span id="rankingDistanceLabel">10 km</span>.</p>
           </div>
         </div>
         <div class="rank-filter-grid rank-filter-grid-identity">
@@ -303,6 +312,23 @@ let showOnlyFound = false;
 let sortKey = "pos";
 let sortDir = 1;
 const $ = id => document.getElementById(id);
+
+const FFA_DISTANCES={
+  "5k":{label:"5 km",file:"./ffa_5km_2024_2026.json.gz",export:"comparaison_ffa_5km.csv",minPb:"PB min, ex 15:00",maxPb:"PB max, ex 20:00"},
+  "10k":{label:"10 km",file:"./ffa_base.json.gz",export:"comparaison_ffa_10km.csv",minPb:"PB min, ex 30:00",maxPb:"PB max, ex 35:00"}
+};
+let currentDistance=localStorage.getItem("comparateur_ffa_distance");
+if(!FFA_DISTANCES[currentDistance]) currentDistance="10k";
+let ffaLoadToken=0;
+
+function updateDistanceUi(){
+  const cfg=FFA_DISTANCES[currentDistance];
+  document.querySelectorAll("[data-distance]").forEach(b=>b.classList.toggle("active",b.getAttribute("data-distance")===currentDistance));
+  const lab=$("rankingDistanceLabel"); if(lab) lab.textContent=cfg.label;
+  const min=$("ffaFullMinPb"), max=$("ffaFullMaxPb");
+  if(min) min.placeholder=cfg.minPb;
+  if(max) max.placeholder=cfg.maxPb;
+}
 
 let activeAppTab="recherche";
 function switchAppTab(tab){
@@ -606,10 +632,10 @@ function setImportEnabled(on){
   if(el) el.disabled=!on;
 }
 
-const STORAGE_KEY="comparateur10k_lastPaste";
-function saveLastPaste(text){ try{ localStorage.setItem(STORAGE_KEY,text); }catch(e){} }
-function loadLastPaste(){ try{ return localStorage.getItem(STORAGE_KEY)||""; }catch(e){ return ""; } }
-function clearLastPaste(){ try{ localStorage.removeItem(STORAGE_KEY); }catch(e){} }
+function storageKey(){ return "comparateur_ffa_lastPaste_"+currentDistance; }
+function saveLastPaste(text){ try{ localStorage.setItem(storageKey(),text); }catch(e){} }
+function loadLastPaste(){ try{ return localStorage.getItem(storageKey())||""; }catch(e){ return ""; } }
+function clearLastPaste(){ try{ localStorage.removeItem(storageKey()); }catch(e){} }
 
 function runPasteAnalysis(){
   $("restoreCard").style.display="none";
@@ -689,29 +715,55 @@ $("restoreBtn").onclick=()=>{
 };
 
 setImportEnabled(false);
-$("baseStatus").textContent="Chargement de la base FFA…";
-async function loadFfaRows(){
-  const r=await fetch("./ffa_base.json.gz");
+async function loadFfaRows(distance){
+  const cfg=FFA_DISTANCES[distance];
+  const r=await fetch(cfg.file,{cache:"no-store"});
   if(!r.ok) throw new Error("HTTP "+r.status);
-  if(!("DecompressionStream" in window)) {
-    throw new Error("Décompression gzip non prise en charge par ce navigateur");
-  }
+  if(!("DecompressionStream" in window)) throw new Error("Décompression gzip non prise en charge par ce navigateur");
   if(!r.body) throw new Error("Flux de la base FFA indisponible");
   const stream=r.body.pipeThrough(new DecompressionStream("gzip"));
   const text=await new Response(stream).text();
-  return JSON.parse(text);
+  const data=JSON.parse(text);
+  return Array.isArray(data) ? data : (Array.isArray(data.rows) ? data.rows : []);
 }
-loadFfaRows().then(rows=>{
-  ffa=buildFfaFromCompact(rows);
-  buildFfaSexRanks();
-  ffaReady=true;
-  $("baseStatus").textContent="Base FFA · "+ffa.length.toLocaleString("fr-FR")+" profils";
-  setImportEnabled(true);
-  if(pendingAutoParse){ pendingAutoParse=false; runPasteAnalysis(); }
-  else if(race.length){ compute(); }
-}).catch(err=>{
-  $("baseStatus").textContent="Erreur de chargement de la base FFA : "+(err&&err.message?err.message:err)+". Recharge la page.";
-});
+async function loadFfaDistance(distance){
+  if(!FFA_DISTANCES[distance]) return;
+  currentDistance=distance;
+  localStorage.setItem("comparateur_ffa_distance",currentDistance);
+  updateDistanceUi();
+  refreshRestoreButton();
+  const token=++ffaLoadToken;
+  ffaReady=false;
+  setImportEnabled(false);
+  ffa=[]; ffaGeneralRows=[]; ffaGeneralRank=new Map(); ffaSexRank=new Map(); ffaCategoryRank=new Map();
+  ffaFullPage=0;
+  $("baseStatus").textContent="Chargement de la base FFA "+FFA_DISTANCES[distance].label+"…";
+  try{
+    const rows=await loadFfaRows(distance);
+    if(token!==ffaLoadToken) return;
+    ffa=buildFfaFromCompact(rows);
+    buildFfaSexRanks();
+    ffaReady=true;
+    $("baseStatus").textContent="Base FFA "+FFA_DISTANCES[distance].label+" · "+ffa.length.toLocaleString("fr-FR")+" profils";
+    setImportEnabled(true);
+    if(activeAppTab==="classement") renderFullFfaRanking(true);
+    if(activeAppTab==="recherche") renderFfaAthleteSearch();
+    if(pendingAutoParse){ pendingAutoParse=false; runPasteAnalysis(); }
+    else if(race.length){ compute(); }
+  }catch(err){
+    if(token!==ffaLoadToken) return;
+    ffaReady=false;
+    $("baseStatus").textContent="Erreur de chargement de la base FFA "+FFA_DISTANCES[distance].label+" : "+(err&&err.message?err.message:err);
+    const msg=$("ffaAthleteSearchMsg"); if(msg) msg.textContent="Base "+FFA_DISTANCES[distance].label+" indisponible.";
+    const fmsg=$("ffaFullMsg"); if(fmsg) fmsg.textContent="Base "+FFA_DISTANCES[distance].label+" indisponible.";
+  }
+}
+document.querySelectorAll("[data-distance]").forEach(btn=>btn.addEventListener("click",()=>{
+  const d=btn.getAttribute("data-distance");
+  if(d!==currentDistance) loadFfaDistance(d);
+}));
+updateDistanceUi();
+loadFfaDistance(currentDistance);
 
 // Bouton "Coller" natif : déclenché par un vrai tap, donc un geste utilisateur
 // frais aux yeux de Safari. iOS affiche toujours sa propre confirmation
@@ -798,7 +850,7 @@ $("onlyNo").onclick=()=>{
   $("onlyFound").textContent="Trouvés";
   render();
 };
-$("export").onclick=()=>exportResultCSV(result,"comparaison_ffa_10km.csv");
+$("export").onclick=()=>exportResultCSV(result,FFA_DISTANCES[currentDistance].export);
 document.querySelectorAll("th[data-key]").forEach(th=>{
   th.addEventListener("click",()=>setSort(th.getAttribute("data-key")));
 });

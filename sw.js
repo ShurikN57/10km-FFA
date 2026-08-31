@@ -1,5 +1,5 @@
-const SHELL_CACHE='comparateur-10k-shell-v5';
-const DATA_CACHE='comparateur-10k-data-v1';
+const SHELL_CACHE='comparateur-ffa-shell-v6';
+const DATA_CACHE='comparateur-ffa-data-v2';
 
 self.addEventListener('install',e=>{self.skipWaiting()});
 
@@ -17,7 +17,7 @@ self.addEventListener('fetch',e=>{
   if(e.request.method!=='GET') return;
   const url=new URL(e.request.url);
 
-  if(url.pathname.endsWith('/ffa_base.json')){
+  if(url.pathname.endsWith('/ffa_base.json.gz') || url.pathname.endsWith('/ffa_5km_2024_2026.json.gz')){
     // Base FFA (grosse) : sert le cache immédiatement si présent, et le
     // rafraîchit en tâche de fond pour la prochaine visite.
     e.respondWith((async()=>{
