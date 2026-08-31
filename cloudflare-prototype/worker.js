@@ -32,6 +32,13 @@ function normalizeName(value) {
     .trim();
 }
 
+function ftsQueryFromName(value) {
+  const q = normalizeName(value);
+  const tokens = q.split(' ').filter((t) => t.length >= 3);
+  if (!tokens.length) return '';
+  return tokens.map((t) => `"${t.replace(/"/g, '""')}"`).join(' AND ');
+}
+
 function categoryBounds(birthYear) {
   const y = Number(birthYear);
   if (!Number.isFinite(y)) return null;
@@ -70,6 +77,23 @@ function categoryBounds(birthYear) {
   if (y >= 1942 && y <= 1946) return [1942, 1946, 'M9'];
   if (y <= 1941) return [null, 1941, 'M10'];
   return null;
+}
+
+function categoryYears(category) {
+  const cat = String(category || '').toUpperCase();
+  const afterSep2026 = new Date() >= new Date('2026-09-01T00:00:00Z');
+  const groups = afterSep2026 ? {
+    CA:[2010,2011], JU:[2008,2009], ES:[2005,2007], SE:[1993,2004],
+    M0:[1988,1992], M1:[1983,1987], M2:[1978,1982], M3:[1973,1977],
+    M4:[1968,1972], M5:[1963,1967], M6:[1958,1962], M7:[1953,1957],
+    M8:[1948,1952], M9:[1943,1947], M10:[null,1942]
+  } : {
+    CA:[2009,2010], JU:[2007,2008], ES:[2004,2006], SE:[1992,2003],
+    M0:[1987,1991], M1:[1982,1986], M2:[1977,1981], M3:[1972,1976],
+    M4:[1967,1971], M5:[1962,1966], M6:[1957,1961], M7:[1952,1956],
+    M8:[1947,1951], M9:[1942,1946], M10:[null,1941]
+  };
+  return groups[cat] || null;
 }
 
 async function attachRanks(env, rows, distance, mode) {
@@ -121,9 +145,8 @@ export default {
       if (!distance) return json(request, { error: 'invalid_distance' }, 400);
       if (q.length < 3) return json(request, { rows: [] });
 
-      const tokens = q.split(' ').filter((t) => t.length >= 3);
-      if (!tokens.length) return json(request, { rows: [] });
-      const ftsQuery = tokens.map((t) => `"${t.replace(/"/g, '""')}"`).join(' AND ');
+      const ftsQuery = ftsQueryFromName(q);
+      if (!ftsQuery) return json(request, { rows: [] });
       const stmt = env.DB.prepare(`
         SELECT a.full_name,a.birth_year,a.sex,a.pb_sec,a.pb_course,a.pb_date,a.club,a.athlete_ffa_id
         FROM athlete_fts
@@ -140,26 +163,66 @@ export default {
     if (url.pathname === '/ranking') {
       const distance = normalizeDistance(url.searchParams.get('distance'));
       if (!distance) return json(request, { error: 'invalid_distance' }, 400);
-      const sex = String(url.searchParams.get('sex') || '').toUpperCase();
-      const year = Number(url.searchParams.get('year') || 0);
+
+      const sexRaw = String(url.searchParams.get('sex') || '').toUpperCase();
+      const sex = sexRaw === 'M' || sexRaw === 'F' ? sexRaw : '';
+      const category = String(url.searchParams.get('category') || '').toUpperCase();
+      const yearRaw = String(url.searchParams.get('year') || '').trim();
+      const year = /^\d{4}$/.test(yearRaw) ? Number(yearRaw) : 0;
       const minPb = Number(url.searchParams.get('minPb') || 0);
       const maxPb = Number(url.searchParams.get('maxPb') || 0);
+      const q = normalizeName(url.searchParams.get('q'));
+      const ftsQuery = q.length >= 3 ? ftsQueryFromName(q) : '';
       const page = Math.max(1, Number(url.searchParams.get('page') || 1));
       const pageSize = 100;
       const offset = (page - 1) * pageSize;
 
-      const where = ['distance = ?'];
-      const binds = [distance];
-      if (sex === 'M' || sex === 'F') { where.push('sex = ?'); binds.push(sex); }
-      if (Number.isFinite(year) && year > 0) { where.push('birth_year = ?'); binds.push(year); }
-      if (Number.isFinite(minPb) && minPb > 0) { where.push('pb_sec >= ?'); binds.push(minPb); }
-      if (Number.isFinite(maxPb) && maxPb > 0) { where.push('pb_sec <= ?'); binds.push(maxPb); }
+      const scopeWhere = ['distance = ?'];
+      const scopeBinds = [distance];
+      if (sex) { scopeWhere.push('sex = ?'); scopeBinds.push(sex); }
+      if (category) {
+        const bounds = categoryYears(category);
+        if (!bounds) return json(request, { error: 'invalid_category' }, 400);
+        const [minYear, maxYear] = bounds;
+        if (minYear == null) { scopeWhere.push('birth_year <= ?'); scopeBinds.push(maxYear); }
+        else { scopeWhere.push('birth_year BETWEEN ? AND ?'); scopeBinds.push(minYear, maxYear); }
+      }
+      if (year) { scopeWhere.push('birth_year = ?'); scopeBinds.push(year); }
 
-      const sql = `SELECT full_name,birth_year,sex,pb_sec,pb_course,pb_date,club,athlete_ffa_id
-                   FROM athletes WHERE ${where.join(' AND ')}
-                   ORDER BY pb_sec ASC, full_name ASC LIMIT ? OFFSET ?`;
-      const res = await env.DB.prepare(sql).bind(...binds, pageSize, offset).all();
-      return json(request, { page, pageSize, rows: res.results || [] });
+      const outerWhere = ['1=1'];
+      const outerBinds = [];
+      if (Number.isFinite(minPb) && minPb > 0) { outerWhere.push('pb_sec >= ?'); outerBinds.push(minPb); }
+      if (Number.isFinite(maxPb) && maxPb > 0) { outerWhere.push('pb_sec <= ?'); outerBinds.push(maxPb); }
+      if (ftsQuery) { outerWhere.push('id IN (SELECT rowid FROM athlete_fts WHERE athlete_fts MATCH ?)'); outerBinds.push(ftsQuery); }
+
+      const cte = `WITH scoped AS (
+        SELECT id,full_name,birth_year,sex,pb_sec,pb_course,pb_date,club,athlete_ffa_id,
+               RANK() OVER (ORDER BY pb_sec ASC) AS rank
+        FROM athletes
+        WHERE ${scopeWhere.join(' AND ')}
+      )`;
+      const finalWhere = outerWhere.join(' AND ');
+      const rowsSql = `${cte}
+        SELECT full_name,birth_year,sex,pb_sec,pb_course,pb_date,club,athlete_ffa_id,rank
+        FROM scoped
+        WHERE ${finalWhere}
+        ORDER BY rank ASC, pb_sec ASC, full_name ASC
+        LIMIT ? OFFSET ?`;
+      const countSql = `${cte} SELECT COUNT(*) AS n FROM scoped WHERE ${finalWhere}`;
+
+      const [rowsRes, countRes] = await env.DB.batch([
+        env.DB.prepare(rowsSql).bind(...scopeBinds, ...outerBinds, pageSize, offset),
+        env.DB.prepare(countSql).bind(...scopeBinds, ...outerBinds)
+      ]);
+      const total = Number(countRes?.results?.[0]?.n || 0);
+      const pages = Math.max(1, Math.ceil(total / pageSize));
+      return json(request, {
+        page: Math.min(page, pages),
+        pageSize,
+        total,
+        pages,
+        rows: rowsRes?.results || []
+      });
     }
 
     return json(request, { error: 'not_found' }, 404);
