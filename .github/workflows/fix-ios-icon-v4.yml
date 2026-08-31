@@ -1,0 +1,34 @@
+name: Fix iOS Le Routard icon v4
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'icons/apple-touch-icon-routard-v4.png'
+      - '.github/workflows/fix-ios-icon-v4.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Point iOS to safe RGB PNG
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('mobile.html')
+          s=p.read_text(encoding='utf-8')
+          s=s.replace('apple-touch-icon-routard-v3.png','apple-touch-icon-routard-v4.png')
+          p.write_text(s,encoding='utf-8')
+          PY
+      - name: Commit and cleanup
+        run: |
+          rm -f .github/workflows/fix-ios-icon-v4.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Use iOS-safe Le Routard home screen icon'
+          git push
