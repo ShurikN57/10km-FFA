@@ -84,19 +84,23 @@ jobs:
           '''
           (out/'000_pre.sql').write_text(pre,encoding='utf-8')
 
-          chunk_size=4000
+          file_chunk_size=20000
+          statement_size=100
           chunk=[]; idx=1
           def flush():
             global idx,chunk
             if not chunk:return
-            sql='INSERT INTO athletes(distance,full_name,name_key,birth_year,sex,pb_sec,pb_course,pb_date,club,athlete_ffa_id) VALUES\n'+',\n'.join(chunk)+';\n'
-            (out/f'{idx:04d}_rows.sql').write_text(sql,encoding='utf-8')
+            statements=[]
+            for pos in range(0,len(chunk),statement_size):
+              batch=chunk[pos:pos+statement_size]
+              statements.append('INSERT INTO athletes(distance,full_name,name_key,birth_year,sex,pb_sec,pb_course,pb_date,club,athlete_ffa_id) VALUES\n'+',\n'.join(batch)+';')
+            (out/f'{idx:04d}_rows.sql').write_text('\n'.join(statements)+'\n',encoding='utf-8')
             idx+=1;chunk=[]
 
           for distance,r,sec,sex in all_rows:
             full=str(r[0] or '').strip(); by=n(r[1]); course=str(r[4] or '').strip(); date=str(r[5] or '').strip(); club=str(r[6] or '').strip(); aid=str(r[7] or '').strip()
             chunk.append('('+','.join([q(distance),q(full),q(norm(full)),by,q(sex),str(sec),q(course),q(date),q(club),q(aid)])+')')
-            if len(chunk)>=chunk_size: flush()
+            if len(chunk)>=file_chunk_size: flush()
           flush()
 
           before="CASE WHEN birth_year BETWEEN 2009 AND 2010 THEN 'CA' WHEN birth_year BETWEEN 2007 AND 2008 THEN 'JU' WHEN birth_year BETWEEN 2004 AND 2006 THEN 'ES' WHEN birth_year BETWEEN 1992 AND 2003 THEN 'SE' WHEN birth_year BETWEEN 1987 AND 1991 THEN 'M0' WHEN birth_year BETWEEN 1982 AND 1986 THEN 'M1' WHEN birth_year BETWEEN 1977 AND 1981 THEN 'M2' WHEN birth_year BETWEEN 1972 AND 1976 THEN 'M3' WHEN birth_year BETWEEN 1967 AND 1971 THEN 'M4' WHEN birth_year BETWEEN 1962 AND 1966 THEN 'M5' WHEN birth_year BETWEEN 1957 AND 1961 THEN 'M6' WHEN birth_year BETWEEN 1952 AND 1956 THEN 'M7' WHEN birth_year BETWEEN 1947 AND 1951 THEN 'M8' WHEN birth_year BETWEEN 1942 AND 1946 THEN 'M9' WHEN birth_year<=1941 THEN 'M10' END"
