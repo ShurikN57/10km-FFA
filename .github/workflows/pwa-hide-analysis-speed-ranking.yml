@@ -19,3 +19,4 @@ jobs:
           git add mobile.html "app base.html"
           git commit -m "Polish PWA mode and speed general ranking"
           git push
+# rerun active-tab render
