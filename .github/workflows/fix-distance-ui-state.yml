@@ -28,8 +28,8 @@ jobs:
               raise SystemExit('activeAppTab marker not found')
           s=s.replace(marker,replacement,1)
 
-          old='''    try{ localStorage.setItem("comparateur_ffa_distance",d); }catch(e){}\n    location.reload();'''
-          new='''    saveDistanceReloadUi();\n    try{ localStorage.setItem("comparateur_ffa_distance",d); }catch(e){}\n    location.reload();'''
+          old='''  try{ localStorage.setItem("comparateur_ffa_distance",d); }catch(e){}\n  location.reload();'''
+          new='''  saveDistanceReloadUi();\n  try{ localStorage.setItem("comparateur_ffa_distance",d); }catch(e){}\n  location.reload();'''
           if old not in s:
               raise SystemExit('reload block not found')
           s=s.replace(old,new,1)
