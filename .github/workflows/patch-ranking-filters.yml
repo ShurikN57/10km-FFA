@@ -1,0 +1,29 @@
+name: Patch ranking filters
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/patch-ranking-filters.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply patch
+        run: python cloudflare-prototype/temp_patch_ranking_filters.py
+      - name: Validate Worker
+        run: |
+          node --check cloudflare-prototype/worker.js
+          git diff --check
+      - name: Commit optimized ranking filters
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add cloudflare-prototype/worker.js
+          git commit -m "Use precomputed ranks for ranking filters"
+          git push
