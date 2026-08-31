@@ -1,0 +1,34 @@
+name: Speed general ranking safe
+on:
+  push:
+    paths:
+      - '.github/workflows/speed-general-ranking-safe.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch files
+        run: python .github/scripts/speed_general_ranking_safe.py
+      - name: Validate inline JavaScript syntax
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          for fname in ['mobile.html','app base.html']:
+              t=Path(fname).read_text(encoding='utf-8')
+              scripts=re.findall(r'<script(?:\s[^>]*)?>(.*?)</script>',t,re.S)
+              inline='\n'.join(s for s in scripts if s.strip())
+              Path('/tmp/check.js').write_text(inline,encoding='utf-8')
+              import subprocess
+              subprocess.check_call(['node','--check','/tmp/check.js'])
+          PY
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add mobile.html "app base.html"
+          git commit -m "Speed up opening general ranking"
+          git push
