@@ -208,11 +208,16 @@ th{background:#141922}
             <p>Consultez et filtrez le classement complet des 10 km.</p>
           </div>
         </div>
-        <input id="ffaFullSearch" type="search" placeholder="Rechercher nom / prénom..." style="width:100%;margin-bottom:9px">
+        <div class="rank-filter-grid">
+          <input id="ffaFullSearch" type="search" placeholder="Rechercher nom / prénom...">
+          <input id="ffaFullYear" inputmode="numeric" placeholder="Année naissance">
+        </div>
         <div class="rank-filter-grid">
           <select id="ffaFullSex"><option value="">Tous sexes</option><option value="M">Hommes</option><option value="F">Femmes</option></select>
           <select id="ffaFullCategory"><option value="">Toutes catégories</option><option>CA</option><option>JU</option><option>ES</option><option>SE</option><option>M0</option><option>M1</option><option>M2</option><option>M3</option><option>M4</option><option>M5</option><option>M6</option><option>M7</option><option>M8</option><option>M9</option><option>M10</option></select>
-          <input id="ffaFullYear" inputmode="numeric" placeholder="Année naissance">
+        </div>
+        <div class="rank-filter-grid">
+          <input id="ffaFullMinPb" inputmode="numeric" placeholder="PB min, ex 30:00">
           <input id="ffaFullMaxPb" inputmode="numeric" placeholder="PB max, ex 35:00">
         </div>
         <button type="button" id="ffaFullReset" style="width:100%;margin-bottom:8px">Réinitialiser les filtres</button>
@@ -500,8 +505,9 @@ function renderFullFfaRanking(resetPage=false){
   const sex=$("ffaFullSex").value;
   const cat=$("ffaFullCategory").value;
   const year=String($("ffaFullYear").value||"").trim();
+  const minPb=parsePbLimit($("ffaFullMinPb").value);
   const maxPb=parsePbLimit($("ffaFullMaxPb").value);
-  const plainGeneral=!sex && !cat && !year && maxPb==null && !q;
+  const plainGeneral=!sex && !cat && !year && minPb==null && maxPb==null && !q;
   let ranks, rows;
   if(plainGeneral){
     // Chemin rapide : classement général déjà trié au chargement.
@@ -513,6 +519,7 @@ function renderFullFfaRanking(resetPage=false){
     rows=ffa.filter(p=>{
       const rank=ranks.get(p);
       if(rank==null) return false;
+      if(minPb!=null && Number(p.pb_sec)<minPb) return false;
       if(maxPb!=null && Number(p.pb_sec)>maxPb) return false;
       if(toks.length){
         const nk=p.name_key||nameKey(p.full_name||"");
@@ -543,9 +550,9 @@ function renderFullFfaRanking(resetPage=false){
   $("ffaFullPrev").disabled=ffaFullPage<=0;
   $("ffaFullNext").disabled=ffaFullPage>=pages-1;
 }
-["ffaFullSearch","ffaFullSex","ffaFullCategory","ffaFullYear","ffaFullMaxPb"].forEach(id=>{
+["ffaFullSearch","ffaFullSex","ffaFullCategory","ffaFullYear","ffaFullMinPb","ffaFullMaxPb"].forEach(id=>{
   const el=$(id);
-  if(el) el.addEventListener(id==="ffaFullSearch"||id==="ffaFullYear"||id==="ffaFullMaxPb"?"input":"change",()=>renderFullFfaRanking(true));
+  if(el) el.addEventListener(id==="ffaFullSearch"||id==="ffaFullYear"||id==="ffaFullMinPb"||id==="ffaFullMaxPb"?"input":"change",()=>renderFullFfaRanking(true));
 });
 const _ffaFullReset=$("ffaFullReset");
 if(_ffaFullReset) _ffaFullReset.addEventListener("click",()=>{
@@ -553,6 +560,7 @@ if(_ffaFullReset) _ffaFullReset.addEventListener("click",()=>{
   $("ffaFullSex").value="";
   $("ffaFullCategory").value="";
   $("ffaFullYear").value="";
+  $("ffaFullMinPb").value="";
   $("ffaFullMaxPb").value="";
   renderFullFfaRanking(true);
 });
