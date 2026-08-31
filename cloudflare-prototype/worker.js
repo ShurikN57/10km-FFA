@@ -194,9 +194,10 @@ export default {
       if (Number.isFinite(minPb) && minPb > 0) { outerWhere.push('pb_sec >= ?'); outerBinds.push(minPb); }
       if (Number.isFinite(maxPb) && maxPb > 0) { outerWhere.push('pb_sec <= ?'); outerBinds.push(maxPb); }
       if (ftsQuery) { outerWhere.push('id IN (SELECT rowid FROM athlete_fts WHERE athlete_fts MATCH ?)'); outerBinds.push(ftsQuery); }
+      else if (q) { outerWhere.push('name_key LIKE ?'); outerBinds.push(`%${q}%`); }
 
       const cte = `WITH scoped AS (
-        SELECT id,full_name,birth_year,sex,pb_sec,pb_course,pb_date,club,athlete_ffa_id,
+        SELECT id,name_key,full_name,birth_year,sex,pb_sec,pb_course,pb_date,club,athlete_ffa_id,
                RANK() OVER (ORDER BY pb_sec ASC) AS rank
         FROM athletes
         WHERE ${scopeWhere.join(' AND ')}
