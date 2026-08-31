@@ -22,6 +22,86 @@ function normalizeDistance(value) {
   return ['5k','10k','semi','marathon'].includes(value) ? value : null;
 }
 
+function normalizeName(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function categoryBounds(birthYear) {
+  const y = Number(birthYear);
+  if (!Number.isFinite(y)) return null;
+  const afterSep2026 = new Date() >= new Date('2026-09-01T00:00:00Z');
+  if (afterSep2026) {
+    if (y >= 2010 && y <= 2011) return [2010, 2011, 'CA'];
+    if (y >= 2008 && y <= 2009) return [2008, 2009, 'JU'];
+    if (y >= 2005 && y <= 2007) return [2005, 2007, 'ES'];
+    if (y >= 1993 && y <= 2004) return [1993, 2004, 'SE'];
+    if (y >= 1988 && y <= 1992) return [1988, 1992, 'M0'];
+    if (y >= 1983 && y <= 1987) return [1983, 1987, 'M1'];
+    if (y >= 1978 && y <= 1982) return [1978, 1982, 'M2'];
+    if (y >= 1973 && y <= 1977) return [1973, 1977, 'M3'];
+    if (y >= 1968 && y <= 1972) return [1968, 1972, 'M4'];
+    if (y >= 1963 && y <= 1967) return [1963, 1967, 'M5'];
+    if (y >= 1958 && y <= 1962) return [1958, 1962, 'M6'];
+    if (y >= 1953 && y <= 1957) return [1953, 1957, 'M7'];
+    if (y >= 1948 && y <= 1952) return [1948, 1952, 'M8'];
+    if (y >= 1943 && y <= 1947) return [1943, 1947, 'M9'];
+    if (y <= 1942) return [null, 1942, 'M10'];
+    return null;
+  }
+  if (y >= 2009 && y <= 2010) return [2009, 2010, 'CA'];
+  if (y >= 2007 && y <= 2008) return [2007, 2008, 'JU'];
+  if (y >= 2004 && y <= 2006) return [2004, 2006, 'ES'];
+  if (y >= 1992 && y <= 2003) return [1992, 2003, 'SE'];
+  if (y >= 1987 && y <= 1991) return [1987, 1991, 'M0'];
+  if (y >= 1982 && y <= 1986) return [1982, 1986, 'M1'];
+  if (y >= 1977 && y <= 1981) return [1977, 1981, 'M2'];
+  if (y >= 1972 && y <= 1976) return [1972, 1976, 'M3'];
+  if (y >= 1967 && y <= 1971) return [1967, 1971, 'M4'];
+  if (y >= 1962 && y <= 1966) return [1962, 1966, 'M5'];
+  if (y >= 1957 && y <= 1961) return [1957, 1961, 'M6'];
+  if (y >= 1952 && y <= 1956) return [1952, 1956, 'M7'];
+  if (y >= 1947 && y <= 1951) return [1947, 1951, 'M8'];
+  if (y >= 1942 && y <= 1946) return [1942, 1946, 'M9'];
+  if (y <= 1941) return [null, 1941, 'M10'];
+  return null;
+}
+
+async function attachRanks(env, rows, distance, mode) {
+  if (!rows.length) return rows;
+  const statements = rows.map((row) => {
+    if (mode === 'general') {
+      return env.DB.prepare('SELECT COUNT(*) AS n FROM athletes WHERE distance = ? AND pb_sec < ?')
+        .bind(distance, Number(row.pb_sec));
+    }
+    if (mode === 'category') {
+      const bounds = categoryBounds(row.birth_year);
+      if (!bounds || !row.sex) return env.DB.prepare('SELECT 0 AS n');
+      const [minYear, maxYear] = bounds;
+      if (minYear == null) {
+        return env.DB.prepare('SELECT COUNT(*) AS n FROM athletes WHERE distance = ? AND sex = ? AND birth_year <= ? AND pb_sec < ?')
+          .bind(distance, row.sex, maxYear, Number(row.pb_sec));
+      }
+      return env.DB.prepare('SELECT COUNT(*) AS n FROM athletes WHERE distance = ? AND sex = ? AND birth_year BETWEEN ? AND ? AND pb_sec < ?')
+        .bind(distance, row.sex, minYear, maxYear, Number(row.pb_sec));
+    }
+    if (!row.sex) return env.DB.prepare('SELECT 0 AS n');
+    return env.DB.prepare('SELECT COUNT(*) AS n FROM athletes WHERE distance = ? AND sex = ? AND pb_sec < ?')
+      .bind(distance, row.sex, Number(row.pb_sec));
+  });
+  const rankResults = await env.DB.batch(statements);
+  return rows.map((row, i) => {
+    const n = Number(rankResults[i]?.results?.[0]?.n || 0);
+    const bounds = mode === 'category' ? categoryBounds(row.birth_year) : null;
+    return { ...row, rank: n + 1, category: bounds?.[2] || '' };
+  });
+}
+
 export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') return new Response(null, { headers: corsHeaders(request) });
@@ -35,19 +115,26 @@ export default {
 
     if (url.pathname === '/search') {
       const distance = normalizeDistance(url.searchParams.get('distance'));
-      const q = String(url.searchParams.get('q') || '').trim().toUpperCase();
+      const q = normalizeName(url.searchParams.get('q'));
+      const modeRaw = String(url.searchParams.get('mode') || 'sex');
+      const mode = ['general','sex','category'].includes(modeRaw) ? modeRaw : 'sex';
       if (!distance) return json(request, { error: 'invalid_distance' }, 400);
       if (q.length < 3) return json(request, { rows: [] });
 
+      const tokens = q.split(' ').filter((t) => t.length >= 3);
+      if (!tokens.length) return json(request, { rows: [] });
+      const ftsQuery = tokens.map((t) => `"${t.replace(/"/g, '""')}"`).join(' AND ');
       const stmt = env.DB.prepare(`
-        SELECT full_name,birth_year,sex,pb_sec,pb_course,pb_date,club,athlete_ffa_id
-        FROM athletes
-        WHERE distance = ? AND name_key LIKE ?
-        ORDER BY birth_year ASC, full_name ASC
+        SELECT a.full_name,a.birth_year,a.sex,a.pb_sec,a.pb_course,a.pb_date,a.club,a.athlete_ffa_id
+        FROM athlete_fts
+        JOIN athletes a ON a.id = athlete_fts.rowid
+        WHERE athlete_fts MATCH ? AND a.distance = ?
+        ORDER BY a.birth_year ASC, a.full_name ASC
         LIMIT 100
-      `).bind(distance, `%${q}%`);
+      `).bind(ftsQuery, distance);
       const res = await stmt.all();
-      return json(request, { rows: res.results || [] });
+      const rows = await attachRanks(env, res.results || [], distance, mode);
+      return json(request, { rows });
     }
 
     if (url.pathname === '/ranking') {
