@@ -1,0 +1,111 @@
+name: Build D1 ranking filter ranks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/build-d1-ranking-filter-ranks.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build ranking filter ranks and indexes
+        run: |
+          cat > /tmp/ranking_filter_ranks.sql <<'SQL'
+          DROP TABLE IF EXISTS athlete_filter_rank;
+          CREATE TABLE athlete_filter_rank (
+            athlete_id INTEGER PRIMARY KEY,
+            rank_general INTEGER NOT NULL,
+            rank_sex INTEGER,
+            rank_year INTEGER,
+            rank_sex_year INTEGER,
+            rank_cat_before INTEGER,
+            rank_sex_cat_before INTEGER,
+            rank_cat_after INTEGER,
+            rank_sex_cat_after INTEGER
+          );
+
+          INSERT INTO athlete_filter_rank(
+            athlete_id,rank_general,rank_sex,rank_year,rank_sex_year,
+            rank_cat_before,rank_sex_cat_before,rank_cat_after,rank_sex_cat_after
+          )
+          WITH base AS (
+            SELECT
+              a.id,a.distance,a.sex,a.birth_year,a.pb_sec,
+              CASE
+                WHEN a.birth_year BETWEEN 2009 AND 2010 THEN 'CA'
+                WHEN a.birth_year BETWEEN 2007 AND 2008 THEN 'JU'
+                WHEN a.birth_year BETWEEN 2004 AND 2006 THEN 'ES'
+                WHEN a.birth_year BETWEEN 1992 AND 2003 THEN 'SE'
+                WHEN a.birth_year BETWEEN 1987 AND 1991 THEN 'M0'
+                WHEN a.birth_year BETWEEN 1982 AND 1986 THEN 'M1'
+                WHEN a.birth_year BETWEEN 1977 AND 1981 THEN 'M2'
+                WHEN a.birth_year BETWEEN 1972 AND 1976 THEN 'M3'
+                WHEN a.birth_year BETWEEN 1967 AND 1971 THEN 'M4'
+                WHEN a.birth_year BETWEEN 1962 AND 1966 THEN 'M5'
+                WHEN a.birth_year BETWEEN 1957 AND 1961 THEN 'M6'
+                WHEN a.birth_year BETWEEN 1952 AND 1956 THEN 'M7'
+                WHEN a.birth_year BETWEEN 1947 AND 1951 THEN 'M8'
+                WHEN a.birth_year BETWEEN 1942 AND 1946 THEN 'M9'
+                WHEN a.birth_year <= 1941 THEN 'M10'
+                ELSE NULL
+              END AS cat_before,
+              CASE
+                WHEN a.birth_year BETWEEN 2010 AND 2011 THEN 'CA'
+                WHEN a.birth_year BETWEEN 2008 AND 2009 THEN 'JU'
+                WHEN a.birth_year BETWEEN 2005 AND 2007 THEN 'ES'
+                WHEN a.birth_year BETWEEN 1993 AND 2004 THEN 'SE'
+                WHEN a.birth_year BETWEEN 1988 AND 1992 THEN 'M0'
+                WHEN a.birth_year BETWEEN 1983 AND 1987 THEN 'M1'
+                WHEN a.birth_year BETWEEN 1978 AND 1982 THEN 'M2'
+                WHEN a.birth_year BETWEEN 1973 AND 1977 THEN 'M3'
+                WHEN a.birth_year BETWEEN 1968 AND 1972 THEN 'M4'
+                WHEN a.birth_year BETWEEN 1963 AND 1967 THEN 'M5'
+                WHEN a.birth_year BETWEEN 1958 AND 1962 THEN 'M6'
+                WHEN a.birth_year BETWEEN 1953 AND 1957 THEN 'M7'
+                WHEN a.birth_year BETWEEN 1948 AND 1952 THEN 'M8'
+                WHEN a.birth_year BETWEEN 1943 AND 1947 THEN 'M9'
+                WHEN a.birth_year <= 1942 THEN 'M10'
+                ELSE NULL
+              END AS cat_after
+            FROM athletes a
+          )
+          SELECT
+            id,
+            RANK() OVER (PARTITION BY distance ORDER BY pb_sec ASC),
+            CASE WHEN sex IN ('M','F') THEN RANK() OVER (PARTITION BY distance,sex ORDER BY pb_sec ASC) END,
+            RANK() OVER (PARTITION BY distance,birth_year ORDER BY pb_sec ASC),
+            CASE WHEN sex IN ('M','F') THEN RANK() OVER (PARTITION BY distance,sex,birth_year ORDER BY pb_sec ASC) END,
+            CASE WHEN cat_before IS NOT NULL THEN RANK() OVER (PARTITION BY distance,cat_before ORDER BY pb_sec ASC) END,
+            CASE WHEN sex IN ('M','F') AND cat_before IS NOT NULL THEN RANK() OVER (PARTITION BY distance,sex,cat_before ORDER BY pb_sec ASC) END,
+            CASE WHEN cat_after IS NOT NULL THEN RANK() OVER (PARTITION BY distance,cat_after ORDER BY pb_sec ASC) END,
+            CASE WHEN sex IN ('M','F') AND cat_after IS NOT NULL THEN RANK() OVER (PARTITION BY distance,sex,cat_after ORDER BY pb_sec ASC) END
+          FROM base;
+
+          CREATE INDEX IF NOT EXISTS idx_athletes_distance_pb ON athletes(distance,pb_sec);
+          CREATE INDEX IF NOT EXISTS idx_athletes_distance_sex_pb ON athletes(distance,sex,pb_sec);
+          CREATE INDEX IF NOT EXISTS idx_athletes_distance_year_pb ON athletes(distance,birth_year,pb_sec);
+          CREATE INDEX IF NOT EXISTS idx_athletes_distance_sex_year_pb ON athletes(distance,sex,birth_year,pb_sec);
+          CREATE INDEX IF NOT EXISTS idx_filter_rank_general ON athlete_filter_rank(rank_general,athlete_id);
+          CREATE INDEX IF NOT EXISTS idx_filter_rank_sex ON athlete_filter_rank(rank_sex,athlete_id);
+          CREATE INDEX IF NOT EXISTS idx_filter_rank_year ON athlete_filter_rank(rank_year,athlete_id);
+          CREATE INDEX IF NOT EXISTS idx_filter_rank_sex_year ON athlete_filter_rank(rank_sex_year,athlete_id);
+          CREATE INDEX IF NOT EXISTS idx_filter_rank_cat_before ON athlete_filter_rank(rank_cat_before,athlete_id);
+          CREATE INDEX IF NOT EXISTS idx_filter_rank_sex_cat_before ON athlete_filter_rank(rank_sex_cat_before,athlete_id);
+          CREATE INDEX IF NOT EXISTS idx_filter_rank_cat_after ON athlete_filter_rank(rank_cat_after,athlete_id);
+          CREATE INDEX IF NOT EXISTS idx_filter_rank_sex_cat_after ON athlete_filter_rank(rank_sex_cat_after,athlete_id);
+          SQL
+          npx --yes wrangler@latest d1 execute ffa-comparateur --remote --file=/tmp/ranking_filter_ranks.sql --config=cloudflare-prototype/wrangler.toml --yes
+      - name: Verify ranking filter ranks
+        run: |
+          npx --yes wrangler@latest d1 execute ffa-comparateur --remote --command="SELECT COUNT(*) AS total, SUM(rank_general IS NOT NULL) AS rg, SUM(rank_year IS NOT NULL) AS ry, SUM(rank_cat_before IS NOT NULL) AS rcb, SUM(rank_cat_after IS NOT NULL) AS rca FROM athlete_filter_rank;" --config=cloudflare-prototype/wrangler.toml --yes
