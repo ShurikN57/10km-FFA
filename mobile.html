@@ -559,6 +559,25 @@ function parsePbLimit(v){
 }
 let ffaRankingToken=0;
 let ffaFullTimer=null;
+let ffaFullSort='rank';
+let ffaFullSortDir='asc';
+function ffaFullSortHeader(){
+  const cols=[['rank','Position'],['name','Nom'],['time','Temps']];
+  return `<div style="display:grid;grid-template-columns:68px minmax(0,1fr) 72px;gap:6px;align-items:center;padding:7px 10px;border-bottom:1px solid var(--line);background:#141922">${cols.map(([key,label])=>{
+    const active=ffaFullSort===key;
+    const arrow=active?(ffaFullSortDir==='asc'?'▲':'▼'):'↕';
+    const align=key==='rank'?'center':key==='time'?'right':'left';
+    return `<button type="button" data-ffa-full-sort="${key}" style="min-height:34px;padding:5px 3px;border:0;background:transparent;color:${active?'var(--accent)':'#c8d0dc'};font-size:11px;text-align:${align};box-shadow:none">${label} ${arrow}</button>`;
+  }).join('')}</div>`;
+}
+function bindFfaFullSortButtons(){
+  document.querySelectorAll('[data-ffa-full-sort]').forEach(btn=>btn.addEventListener('click',()=>{
+    const key=btn.getAttribute('data-ffa-full-sort');
+    if(ffaFullSort===key) ffaFullSortDir=ffaFullSortDir==='asc'?'desc':'asc';
+    else { ffaFullSort=key; ffaFullSortDir='asc'; }
+    renderFullFfaRanking(true);
+  }));
+}
 async function renderFullFfaRanking(resetPage=false){
   if(resetPage) ffaFullPage=0;
   const box=$("ffaFullResults"), msg=$("ffaFullMsg");
@@ -570,7 +589,7 @@ async function renderFullFfaRanking(resetPage=false){
   const year=String($("ffaFullYear").value||"").trim();
   const minPb=parsePbLimit($("ffaFullMinPb").value);
   const maxPb=parsePbLimit($("ffaFullMaxPb").value);
-  const params=new URLSearchParams({distance:currentDistance,page:String(ffaFullPage+1)});
+  const params=new URLSearchParams({distance:currentDistance,page:String(ffaFullPage+1),sort:ffaFullSort,dir:ffaFullSortDir});
   if(q) params.set("q",q);
   if(sex) params.set("sex",sex);
   if(cat) params.set("category",cat);
@@ -589,7 +608,8 @@ async function renderFullFfaRanking(resetPage=false){
     const apiPage=Math.max(1,Number(data.page)||1);
     ffaFullPage=apiPage-1;
     msg.textContent=total.toLocaleString("fr-FR")+" athlète"+(total>1?"s":"")+" · page "+apiPage+"/"+pages;
-    box.innerHTML=rows.length ? rows.map(r=>{
+    const sortHeader=ffaFullSortHeader();
+    box.innerHTML=sortHeader+(rows.length ? rows.map(r=>{
       const p={
         full_name:r.full_name||"",
         annee_naissance:r.birth_year||"",
@@ -609,7 +629,8 @@ async function renderFullFfaRanking(resetPage=false){
       const meta=[p.annee_naissance||"—",p.sexe||"",catText].filter(Boolean).join(" · ");
       const rankSize=rank>=100000?"12px":rank>=10000?"13px":"14px";
       return `<div style="display:grid;grid-template-columns:68px minmax(0,1fr) 72px;gap:6px;align-items:center;padding:9px 10px;border-bottom:1px solid var(--line)"><div style="font-weight:800;font-size:${rankSize};text-align:center;font-variant-numeric:tabular-nums;white-space:nowrap">${esc(rankText)}</div><div style="min-width:0"><div style="overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.18">${link}</div><div class="small">${esc(meta)}</div></div><div style="text-align:right;font-weight:800;white-space:nowrap">${esc(p.pb_chrono||"—")}</div></div>`;
-    }).join("") : `<div class="msg" style="padding:12px">Aucun athlète avec ces filtres.</div>`;
+    }).join("") : `<div class="msg" style="padding:12px">Aucun athlète avec ces filtres.</div>`);
+    bindFfaFullSortButtons();
     $("ffaFullPrev").disabled=ffaFullPage<=0;
     $("ffaFullNext").disabled=ffaFullPage>=pages-1;
   }catch(err){
@@ -638,6 +659,8 @@ if(_ffaFullReset) _ffaFullReset.addEventListener("click",()=>{
   $("ffaFullYear").value="";
   $("ffaFullMinPb").value="";
   $("ffaFullMaxPb").value="";
+  ffaFullSort='rank';
+  ffaFullSortDir='asc';
   renderFullFfaRanking(true);
 });
 const _ffaFullPrev=$("ffaFullPrev"); if(_ffaFullPrev) _ffaFullPrev.addEventListener("click",()=>{if(ffaFullPage>0){ffaFullPage--;renderFullFfaRanking(false);}});

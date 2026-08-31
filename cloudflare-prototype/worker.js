@@ -158,19 +158,27 @@ export default {
       const page = Math.max(1, Number(url.searchParams.get('page') || 1));
       const pageSize = 100;
       const offset = (page - 1) * pageSize;
+      const sortRaw = String(url.searchParams.get('sort') || 'rank').toLowerCase();
+      const sort = ['rank','name','time'].includes(sortRaw) ? sortRaw : 'rank';
+      const dir = String(url.searchParams.get('dir') || 'asc').toLowerCase() === 'desc' ? 'DESC' : 'ASC';
 
       const plainGeneral = !sex && !category && !year && !q &&
         !(Number.isFinite(minPb) && minPb > 0) &&
         !(Number.isFinite(maxPb) && maxPb > 0);
 
       if (plainGeneral) {
+        const generalOrder = sort === 'name'
+          ? `a.full_name ${dir}, a.pb_sec ASC, a.id ASC`
+          : sort === 'time'
+            ? `a.pb_sec ${dir}, a.full_name ASC, a.id ASC`
+            : `r.rank ${dir}, a.pb_sec ${dir}, a.full_name ASC, a.id ASC`;
         const [rowsRes, statsRes] = await env.DB.batch([
           env.DB.prepare(`
             SELECT a.full_name,a.birth_year,a.sex,a.pb_sec,a.pb_course,a.pb_date,a.club,a.athlete_ffa_id,r.rank
             FROM athlete_general_rank r
             JOIN athletes a ON a.id = r.athlete_id
             WHERE r.distance = ?
-            ORDER BY r.display_order ASC
+            ORDER BY ${generalOrder}
             LIMIT ? OFFSET ?
           `).bind(distance, pageSize, offset),
           env.DB.prepare('SELECT total FROM ffa_distance_stats WHERE distance = ?').bind(distance)
@@ -211,6 +219,11 @@ export default {
       } else if (sex) rankExpr = 'sr.rank_sex';
 
       const finalWhere = where.join(' AND ');
+      const filteredOrder = sort === 'name'
+        ? `a.full_name ${dir}, a.pb_sec ASC, a.id ASC`
+        : sort === 'time'
+          ? `a.pb_sec ${dir}, a.full_name ASC, a.id ASC`
+          : `rank ${dir}, a.pb_sec ${dir}, a.full_name ASC, a.id ASC`;
       const rowsSql = `
         SELECT a.full_name,a.birth_year,a.sex,a.pb_sec,a.pb_course,a.pb_date,a.club,a.athlete_ffa_id,
                ${rankExpr} AS rank
@@ -220,7 +233,7 @@ export default {
         LEFT JOIN athlete_rank_cat_before cb ON cb.athlete_id = a.id
         LEFT JOIN athlete_rank_cat_after ca ON ca.athlete_id = a.id
         WHERE ${finalWhere}
-        ORDER BY rank ASC, a.pb_sec ASC, a.full_name ASC
+        ORDER BY ${filteredOrder}
         LIMIT ? OFFSET ?`;
       const countSql = `SELECT COUNT(*) AS n FROM athletes a WHERE ${finalWhere}`;
 
