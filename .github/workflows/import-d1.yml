@@ -36,10 +36,12 @@ jobs:
           PREFIX = 'INSERT INTO athletes(distance,full_name,name_key,birth_year,sex,pb_sec,pb_course,pb_date,club,athlete_ffa_id) VALUES\n'
 
           def name_key(value):
-              s = unicodedata.normalize('NFD', str(value or ''))
+              raw = str(value or '').strip()
+              s = unicodedata.normalize('NFD', raw)
               s = ''.join(c for c in s if unicodedata.category(c) != 'Mn').upper()
               s = re.sub(r'[^A-Z0-9]+', ' ', s)
-              return re.sub(r'\s+', ' ', s).strip()
+              s = re.sub(r'\s+', ' ', s).strip()
+              return s or raw.upper()
 
           def sql(v):
               if v is None or v == '': return 'NULL'
@@ -55,6 +57,7 @@ jobs:
           statements = 0
           max_seen = 0
           current = []
+          fallback_keys = 0
 
           def flush(out):
               global statements, max_seen, current
@@ -74,10 +77,14 @@ jobs:
                   if not path.exists(): raise SystemExit(f'Missing source: {path}')
                   for r in rows_from(path):
                       if not isinstance(r, list) or len(r) < 8: continue
+                      full_name = str(r[0] or '').strip()
+                      if not full_name: continue
                       pb = int(r[3] or 0)
                       if pb <= 0: continue
                       if distance == '5k' and pb < 720: continue
-                      vals = [distance, r[0], name_key(r[0]), r[1], r[2], pb, r[4], r[5], r[6], r[7]]
+                      nk = name_key(full_name)
+                      if not re.search(r'[A-Z0-9]', nk): fallback_keys += 1
+                      vals = [distance, full_name, nk, r[1], r[2], pb, r[4], r[5], r[6], r[7]]
                       row = '(' + ','.join(sql(v) for v in vals) + ')'
                       candidate = PREFIX + ',\n'.join(current + [row]) + ';\n'
                       if current and len(candidate.encode('utf-8')) > MAX_STMT:
@@ -91,6 +98,7 @@ jobs:
           print(f"total={counts['5k']+counts['10k']}")
           print(f"statements={statements}")
           print(f"max_statement_bytes={max_seen}")
+          print(f"fallback_keys={fallback_keys}")
           print(f"file_bytes={OUT.stat().st_size}")
           if counts != {'5k': 123248, '10k': 527474}:
               raise SystemExit(f'Unexpected counts: {counts}')
