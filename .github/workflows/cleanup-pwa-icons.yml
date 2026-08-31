@@ -1,0 +1,75 @@
+name: Cleanup PWA icons
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/cleanup-pwa-icons.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Keep one definitive icon set
+        run: |
+          cp icons/apple-touch-icon-routard-v4.png icons/apple-touch-icon.png
+          rm -f \
+            icons/apple-touch-icon-routard-v3.png \
+            icons/apple-touch-icon-routard-v4.png \
+            icons/favicon-32x32-routard-v3.png \
+            icons/icon-192x192-routard-v3.png \
+            icons/icon-512x512-routard-v3.png \
+            icons/le-routard.svg
+      - name: Align all PWA references
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          for name in ['mobile.html','index.html']:
+              p=Path(name)
+              s=p.read_text(encoding='utf-8')
+              import re
+              s=re.sub(r'<link rel="icon" href="[^"]+" type="image/png">', '<link rel="icon" href="./icons/favicon-32x32.png" type="image/png">', s)
+              s=re.sub(r'<link rel="apple-touch-icon" sizes="180x180" href="[^"]+">', '<link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">', s)
+              s=re.sub(r'<link rel="apple-touch-icon-precomposed" sizes="180x180" href="[^"]+">', '<link rel="apple-touch-icon-precomposed" sizes="180x180" href="./icons/apple-touch-icon.png">', s)
+              p.write_text(s,encoding='utf-8')
+
+          Path('manifest.webmanifest').write_text('''{
+            "name": "Le Routard",
+            "short_name": "Le Routard",
+            "start_url": "./mobile.html",
+            "display": "standalone",
+            "background_color": "#0f1115",
+            "theme_color": "#0f1115",
+            "lang": "fr",
+            "icons": [
+              {"src":"./icons/icon-192x192.png","sizes":"192x192","type":"image/png","purpose":"any"},
+              {"src":"./icons/icon-512x512.png","sizes":"512x512","type":"image/png","purpose":"any"}
+            ]
+          }
+          ''',encoding='utf-8')
+          PY
+      - name: Verify definitive icon set
+        run: |
+          test -f icons/apple-touch-icon.png
+          test -f icons/favicon-32x32.png
+          test -f icons/icon-192x192.png
+          test -f icons/icon-512x512.png
+          test "$(find icons -maxdepth 1 -type f | wc -l)" -eq 4
+          grep -q './icons/apple-touch-icon.png' mobile.html
+          grep -q './icons/apple-touch-icon.png' index.html
+          grep -q './icons/icon-192x192.png' manifest.webmanifest
+          grep -q './icons/icon-512x512.png' manifest.webmanifest
+      - name: Commit cleanup and remove workflow
+        run: |
+          rm -f .github/workflows/cleanup-pwa-icons.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Clean and unify Le Routard PWA icons'
+          git push
