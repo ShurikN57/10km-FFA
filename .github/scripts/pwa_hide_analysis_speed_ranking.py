@@ -31,4 +31,10 @@ for path in FILES:
     if marker in t and 'const isStandalonePwa' not in t:
         t=t.replace(marker,addition,1)
 
+    # If the user opens Classement before the FFA base is fully ready, render it automatically as soon as loading finishes.
+    old_ready='''  if(pendingAutoParse){ pendingAutoParse=false; runPasteAnalysis(); }\n  else if(race.length){ compute(); }'''
+    new_ready='''  if(pendingAutoParse){ pendingAutoParse=false; runPasteAnalysis(); }\n  else if(race.length){ compute(); }\n  if(activeAppTab==="classement") renderFullFfaRanking(false);\n  else if(activeAppTab==="recherche") renderFfaAthleteSearch();'''
+    if old_ready in t and 'if(activeAppTab==="classement") renderFullFfaRanking(false);' not in t:
+        t=t.replace(old_ready,new_ready,1)
+
     path.write_text(t,encoding='utf-8')
