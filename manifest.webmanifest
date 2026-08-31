@@ -1,6 +1,6 @@
 {
-  "name": "Comparateur FFA / GoTiming",
-  "short_name": "Comparateur FFA",
+  "name": "Le Routard",
+  "short_name": "Le Routard",
   "start_url": "./mobile.html",
   "display": "standalone",
   "background_color": "#0f1115",
