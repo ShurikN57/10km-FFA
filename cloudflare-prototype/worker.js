@@ -186,43 +186,47 @@ export default {
         });
       }
 
-      const scopeWhere = ['distance = ?'];
-      const scopeBinds = [distance];
-      if (sex) { scopeWhere.push('sex = ?'); scopeBinds.push(sex); }
+      const where = ['a.distance = ?'];
+      const binds = [distance];
+      if (sex) { where.push('a.sex = ?'); binds.push(sex); }
       if (category) {
         const bounds = categoryYears(category);
         if (!bounds) return json(request, { error: 'invalid_category' }, 400);
         const [minYear, maxYear] = bounds;
-        if (minYear == null) { scopeWhere.push('birth_year <= ?'); scopeBinds.push(maxYear); }
-        else { scopeWhere.push('birth_year BETWEEN ? AND ?'); scopeBinds.push(minYear, maxYear); }
+        if (minYear == null) { where.push('a.birth_year <= ?'); binds.push(maxYear); }
+        else { where.push('a.birth_year BETWEEN ? AND ?'); binds.push(minYear, maxYear); }
       }
-      if (year) { scopeWhere.push('birth_year = ?'); scopeBinds.push(year); }
+      if (year) { where.push('a.birth_year = ?'); binds.push(year); }
+      if (Number.isFinite(minPb) && minPb > 0) { where.push('a.pb_sec >= ?'); binds.push(minPb); }
+      if (Number.isFinite(maxPb) && maxPb > 0) { where.push('a.pb_sec <= ?'); binds.push(maxPb); }
+      if (ftsQuery) { where.push('a.id IN (SELECT rowid FROM athlete_fts WHERE athlete_fts MATCH ?)'); binds.push(ftsQuery); }
+      else if (q) { where.push('a.name_key LIKE ?'); binds.push(`%${q}%`); }
 
-      const outerWhere = ['1=1'];
-      const outerBinds = [];
-      if (Number.isFinite(minPb) && minPb > 0) { outerWhere.push('pb_sec >= ?'); outerBinds.push(minPb); }
-      if (Number.isFinite(maxPb) && maxPb > 0) { outerWhere.push('pb_sec <= ?'); outerBinds.push(maxPb); }
-      if (ftsQuery) { outerWhere.push('id IN (SELECT rowid FROM athlete_fts WHERE athlete_fts MATCH ?)'); outerBinds.push(ftsQuery); }
-      else if (q) { outerWhere.push('name_key LIKE ?'); outerBinds.push(`%${q}%`); }
+      const afterSep2026 = new Date() >= new Date('2026-09-01T00:00:00Z');
+      let rankExpr = 'sr.rank_general';
+      if (year) rankExpr = sex ? 'yr.rank_sex_year' : 'yr.rank_year';
+      else if (category) {
+        if (sex) rankExpr = afterSep2026 ? 'sr.rank_cat_after_sep' : 'sr.rank_cat_before_sep';
+        else rankExpr = afterSep2026 ? 'ca.rank_category' : 'cb.rank_category';
+      } else if (sex) rankExpr = 'sr.rank_sex';
 
-      const cte = `WITH scoped AS (
-        SELECT id,name_key,full_name,birth_year,sex,pb_sec,pb_course,pb_date,club,athlete_ffa_id,
-               RANK() OVER (ORDER BY pb_sec ASC) AS rank
-        FROM athletes
-        WHERE ${scopeWhere.join(' AND ')}
-      )`;
-      const finalWhere = outerWhere.join(' AND ');
-      const rowsSql = `${cte}
-        SELECT full_name,birth_year,sex,pb_sec,pb_course,pb_date,club,athlete_ffa_id,rank
-        FROM scoped
+      const finalWhere = where.join(' AND ');
+      const rowsSql = `
+        SELECT a.full_name,a.birth_year,a.sex,a.pb_sec,a.pb_course,a.pb_date,a.club,a.athlete_ffa_id,
+               ${rankExpr} AS rank
+        FROM athletes a
+        JOIN athlete_search_rank sr ON sr.athlete_id = a.id
+        LEFT JOIN athlete_rank_year yr ON yr.athlete_id = a.id
+        LEFT JOIN athlete_rank_cat_before cb ON cb.athlete_id = a.id
+        LEFT JOIN athlete_rank_cat_after ca ON ca.athlete_id = a.id
         WHERE ${finalWhere}
-        ORDER BY rank ASC, pb_sec ASC, full_name ASC
+        ORDER BY rank ASC, a.pb_sec ASC, a.full_name ASC
         LIMIT ? OFFSET ?`;
-      const countSql = `${cte} SELECT COUNT(*) AS n FROM scoped WHERE ${finalWhere}`;
+      const countSql = `SELECT COUNT(*) AS n FROM athletes a WHERE ${finalWhere}`;
 
       const [rowsRes, countRes] = await env.DB.batch([
-        env.DB.prepare(rowsSql).bind(...scopeBinds, ...outerBinds, pageSize, offset),
-        env.DB.prepare(countSql).bind(...scopeBinds, ...outerBinds)
+        env.DB.prepare(rowsSql).bind(...binds, pageSize, offset),
+        env.DB.prepare(countSql).bind(...binds)
       ]);
       const total = Number(countRes?.results?.[0]?.n || 0);
       const pages = Math.max(1, Math.ceil(total / pageSize));
