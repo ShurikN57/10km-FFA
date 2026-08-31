@@ -1,0 +1,142 @@
+name: Build Semi Marathon ranks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/build-semi-marathon-ranks.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify raw athlete counts
+        working-directory: cloudflare-prototype
+        run: |
+          npx --yes wrangler@latest d1 execute ffa-comparateur --remote --command="SELECT distance,COUNT(*) AS n FROM athletes WHERE distance IN ('semi','marathon') GROUP BY distance ORDER BY distance;"
+
+      - name: Clear partial derived rows
+        working-directory: cloudflare-prototype
+        run: |
+          npx --yes wrangler@latest d1 execute ffa-comparateur --remote --command="DELETE FROM athlete_general_rank WHERE distance IN ('semi','marathon'); DELETE FROM athlete_search_rank WHERE athlete_id IN (SELECT id FROM athletes WHERE distance IN ('semi','marathon')); DELETE FROM athlete_rank_year WHERE athlete_id IN (SELECT id FROM athletes WHERE distance IN ('semi','marathon')); DELETE FROM athlete_rank_cat_before WHERE athlete_id IN (SELECT id FROM athletes WHERE distance IN ('semi','marathon')); DELETE FROM athlete_rank_cat_after WHERE athlete_id IN (SELECT id FROM athletes WHERE distance IN ('semi','marathon')); DELETE FROM ffa_distance_stats WHERE distance IN ('semi','marathon');"
+
+      - name: Build Semi general ranks
+        working-directory: cloudflare-prototype
+        run: |
+          npx --yes wrangler@latest d1 execute ffa-comparateur --remote --command="INSERT INTO athlete_general_rank(athlete_id,distance,rank,display_order) SELECT id,distance,RANK() OVER (ORDER BY pb_sec ASC),ROW_NUMBER() OVER (ORDER BY pb_sec ASC,full_name ASC,id ASC) FROM athletes WHERE distance='semi';"
+
+      - name: Build Marathon general ranks
+        working-directory: cloudflare-prototype
+        run: |
+          npx --yes wrangler@latest d1 execute ffa-comparateur --remote --command="INSERT INTO athlete_general_rank(athlete_id,distance,rank,display_order) SELECT id,distance,RANK() OVER (ORDER BY pb_sec ASC),ROW_NUMBER() OVER (ORDER BY pb_sec ASC,full_name ASC,id ASC) FROM athletes WHERE distance='marathon';"
+
+      - name: Build Semi search ranks
+        working-directory: cloudflare-prototype
+        run: |
+          cat > /tmp/semi_search.sql <<'SQL'
+          WITH b AS (
+            SELECT id,sex,pb_sec,
+              CASE WHEN birth_year BETWEEN 2009 AND 2010 THEN 'CA' WHEN birth_year BETWEEN 2007 AND 2008 THEN 'JU' WHEN birth_year BETWEEN 2004 AND 2006 THEN 'ES' WHEN birth_year BETWEEN 1992 AND 2003 THEN 'SE' WHEN birth_year BETWEEN 1987 AND 1991 THEN 'M0' WHEN birth_year BETWEEN 1982 AND 1986 THEN 'M1' WHEN birth_year BETWEEN 1977 AND 1981 THEN 'M2' WHEN birth_year BETWEEN 1972 AND 1976 THEN 'M3' WHEN birth_year BETWEEN 1967 AND 1971 THEN 'M4' WHEN birth_year BETWEEN 1962 AND 1966 THEN 'M5' WHEN birth_year BETWEEN 1957 AND 1961 THEN 'M6' WHEN birth_year BETWEEN 1952 AND 1956 THEN 'M7' WHEN birth_year BETWEEN 1947 AND 1951 THEN 'M8' WHEN birth_year BETWEEN 1942 AND 1946 THEN 'M9' WHEN birth_year<=1941 THEN 'M10' END AS cb,
+              CASE WHEN birth_year BETWEEN 2010 AND 2011 THEN 'CA' WHEN birth_year BETWEEN 2008 AND 2009 THEN 'JU' WHEN birth_year BETWEEN 2005 AND 2007 THEN 'ES' WHEN birth_year BETWEEN 1993 AND 2004 THEN 'SE' WHEN birth_year BETWEEN 1988 AND 1992 THEN 'M0' WHEN birth_year BETWEEN 1983 AND 1987 THEN 'M1' WHEN birth_year BETWEEN 1978 AND 1982 THEN 'M2' WHEN birth_year BETWEEN 1973 AND 1977 THEN 'M3' WHEN birth_year BETWEEN 1968 AND 1972 THEN 'M4' WHEN birth_year BETWEEN 1963 AND 1967 THEN 'M5' WHEN birth_year BETWEEN 1958 AND 1962 THEN 'M6' WHEN birth_year BETWEEN 1953 AND 1957 THEN 'M7' WHEN birth_year BETWEEN 1948 AND 1952 THEN 'M8' WHEN birth_year BETWEEN 1943 AND 1947 THEN 'M9' WHEN birth_year<=1942 THEN 'M10' END AS ca
+            FROM athletes WHERE distance='semi'
+          ), r AS (
+            SELECT id,
+              RANK() OVER (ORDER BY pb_sec) AS rg,
+              RANK() OVER (PARTITION BY sex ORDER BY pb_sec) AS rs,
+              CASE WHEN cb IS NOT NULL THEN RANK() OVER (PARTITION BY sex,cb ORDER BY pb_sec) END AS rcb,
+              CASE WHEN ca IS NOT NULL THEN RANK() OVER (PARTITION BY sex,ca ORDER BY pb_sec) END AS rca
+            FROM b
+          )
+          INSERT INTO athlete_search_rank(athlete_id,rank_general,rank_sex,rank_cat_before_sep,rank_cat_after_sep)
+          SELECT id,rg,rs,rcb,rca FROM r;
+          SQL
+          npx --yes wrangler@latest d1 execute ffa-comparateur --remote --file=/tmp/semi_search.sql
+
+      - name: Build Marathon search ranks
+        working-directory: cloudflare-prototype
+        run: |
+          sed "s/distance='semi'/distance='marathon'/" /tmp/semi_search.sql > /tmp/marathon_search.sql
+          npx --yes wrangler@latest d1 execute ffa-comparateur --remote --file=/tmp/marathon_search.sql
+
+      - name: Build Semi year ranks
+        working-directory: cloudflare-prototype
+        run: |
+          npx --yes wrangler@latest d1 execute ffa-comparateur --remote --command="INSERT INTO athlete_rank_year(athlete_id,rank_year,rank_sex_year) SELECT id,RANK() OVER (PARTITION BY birth_year ORDER BY pb_sec),CASE WHEN sex IN ('M','F') THEN RANK() OVER (PARTITION BY sex,birth_year ORDER BY pb_sec) END FROM athletes WHERE distance='semi';"
+
+      - name: Build Marathon year ranks
+        working-directory: cloudflare-prototype
+        run: |
+          npx --yes wrangler@latest d1 execute ffa-comparateur --remote --command="INSERT INTO athlete_rank_year(athlete_id,rank_year,rank_sex_year) SELECT id,RANK() OVER (PARTITION BY birth_year ORDER BY pb_sec),CASE WHEN sex IN ('M','F') THEN RANK() OVER (PARTITION BY sex,birth_year ORDER BY pb_sec) END FROM athletes WHERE distance='marathon';"
+
+      - name: Build Semi category ranks before Sep
+        working-directory: cloudflare-prototype
+        run: |
+          cat > /tmp/semi_cat_before.sql <<'SQL'
+          WITH b AS (
+            SELECT id,pb_sec,
+              CASE WHEN birth_year BETWEEN 2009 AND 2010 THEN 'CA' WHEN birth_year BETWEEN 2007 AND 2008 THEN 'JU' WHEN birth_year BETWEEN 2004 AND 2006 THEN 'ES' WHEN birth_year BETWEEN 1992 AND 2003 THEN 'SE' WHEN birth_year BETWEEN 1987 AND 1991 THEN 'M0' WHEN birth_year BETWEEN 1982 AND 1986 THEN 'M1' WHEN birth_year BETWEEN 1977 AND 1981 THEN 'M2' WHEN birth_year BETWEEN 1972 AND 1976 THEN 'M3' WHEN birth_year BETWEEN 1967 AND 1971 THEN 'M4' WHEN birth_year BETWEEN 1962 AND 1966 THEN 'M5' WHEN birth_year BETWEEN 1957 AND 1961 THEN 'M6' WHEN birth_year BETWEEN 1952 AND 1956 THEN 'M7' WHEN birth_year BETWEEN 1947 AND 1951 THEN 'M8' WHEN birth_year BETWEEN 1942 AND 1946 THEN 'M9' WHEN birth_year<=1941 THEN 'M10' END AS cat
+            FROM athletes WHERE distance='semi'
+          ), r AS (SELECT id,cat,RANK() OVER (PARTITION BY cat ORDER BY pb_sec) AS rk FROM b WHERE cat IS NOT NULL)
+          INSERT INTO athlete_rank_cat_before(athlete_id,rank_category) SELECT id,rk FROM r;
+          SQL
+          npx --yes wrangler@latest d1 execute ffa-comparateur --remote --file=/tmp/semi_cat_before.sql
+
+      - name: Build Marathon category ranks before Sep
+        working-directory: cloudflare-prototype
+        run: |
+          sed "s/distance='semi'/distance='marathon'/" /tmp/semi_cat_before.sql > /tmp/marathon_cat_before.sql
+          npx --yes wrangler@latest d1 execute ffa-comparateur --remote --file=/tmp/marathon_cat_before.sql
+
+      - name: Build Semi category ranks after Sep
+        working-directory: cloudflare-prototype
+        run: |
+          cat > /tmp/semi_cat_after.sql <<'SQL'
+          WITH b AS (
+            SELECT id,pb_sec,
+              CASE WHEN birth_year BETWEEN 2010 AND 2011 THEN 'CA' WHEN birth_year BETWEEN 2008 AND 2009 THEN 'JU' WHEN birth_year BETWEEN 2005 AND 2007 THEN 'ES' WHEN birth_year BETWEEN 1993 AND 2004 THEN 'SE' WHEN birth_year BETWEEN 1988 AND 1992 THEN 'M0' WHEN birth_year BETWEEN 1983 AND 1987 THEN 'M1' WHEN birth_year BETWEEN 1978 AND 1982 THEN 'M2' WHEN birth_year BETWEEN 1973 AND 1977 THEN 'M3' WHEN birth_year BETWEEN 1968 AND 1972 THEN 'M4' WHEN birth_year BETWEEN 1963 AND 1967 THEN 'M5' WHEN birth_year BETWEEN 1958 AND 1962 THEN 'M6' WHEN birth_year BETWEEN 1953 AND 1957 THEN 'M7' WHEN birth_year BETWEEN 1948 AND 1952 THEN 'M8' WHEN birth_year BETWEEN 1943 AND 1947 THEN 'M9' WHEN birth_year<=1942 THEN 'M10' END AS cat
+            FROM athletes WHERE distance='semi'
+          ), r AS (SELECT id,cat,RANK() OVER (PARTITION BY cat ORDER BY pb_sec) AS rk FROM b WHERE cat IS NOT NULL)
+          INSERT INTO athlete_rank_cat_after(athlete_id,rank_category) SELECT id,rk FROM r;
+          SQL
+          npx --yes wrangler@latest d1 execute ffa-comparateur --remote --file=/tmp/semi_cat_after.sql
+
+      - name: Build Marathon category ranks after Sep
+        working-directory: cloudflare-prototype
+        run: |
+          sed "s/distance='semi'/distance='marathon'/" /tmp/semi_cat_after.sql > /tmp/marathon_cat_after.sql
+          npx --yes wrangler@latest d1 execute ffa-comparateur --remote --file=/tmp/marathon_cat_after.sql
+
+      - name: Build distance stats
+        working-directory: cloudflare-prototype
+        run: |
+          npx --yes wrangler@latest d1 execute ffa-comparateur --remote --command="INSERT OR REPLACE INTO ffa_distance_stats(distance,total) SELECT distance,COUNT(*) FROM athletes WHERE distance IN ('semi','marathon') GROUP BY distance;"
+
+      - name: Add Semi and Marathon to FTS
+        working-directory: cloudflare-prototype
+        run: |
+          npx --yes wrangler@latest d1 execute ffa-comparateur --remote --command="INSERT INTO athlete_fts(rowid,name_key,distance) SELECT id,name_key,distance FROM athletes WHERE distance IN ('semi','marathon');"
+
+      - name: Verify derived counts
+        working-directory: cloudflare-prototype
+        run: |
+          npx --yes wrangler@latest d1 execute ffa-comparateur --remote --command="SELECT distance,COUNT(*) AS n FROM athletes GROUP BY distance ORDER BY distance;"
+          npx --yes wrangler@latest d1 execute ffa-comparateur --remote --command="SELECT distance,COUNT(*) AS n FROM athlete_general_rank GROUP BY distance ORDER BY distance;"
+          npx --yes wrangler@latest d1 execute ffa-comparateur --remote --command="SELECT distance,total FROM ffa_distance_stats ORDER BY distance;"
+
+      - name: Verify API
+        run: |
+          curl -fsS 'https://ffa-comparateur-api.57compte2.workers.dev/health'
+          echo
+          curl -fsS 'https://ffa-comparateur-api.57compte2.workers.dev/ranking?distance=semi&page=1' | head -c 500
+          echo
+          curl -fsS 'https://ffa-comparateur-api.57compte2.workers.dev/ranking?distance=marathon&page=1' | head -c 500
+          echo
