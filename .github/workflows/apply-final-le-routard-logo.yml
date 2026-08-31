@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'icons/le-routard-final.png.b64'
+      - '.github/workflows/apply-final-le-routard-logo.yml'
   workflow_dispatch:
 
 permissions:
@@ -34,7 +35,6 @@ jobs:
           s=p.read_text(encoding='utf-8')
           s=s.replace('<link rel="icon" href="./icons/le-routard.svg" type="image/svg+xml">','<link rel="icon" href="./icons/favicon-32x32.png" type="image/png">')
           s=s.replace('<link rel="apple-touch-icon" href="./icons/le-routard.svg">','<link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">')
-          s=s.replace('<link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">','<link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">')
           p.write_text(s,encoding='utf-8')
 
           Path('manifest.webmanifest').write_text('''{
