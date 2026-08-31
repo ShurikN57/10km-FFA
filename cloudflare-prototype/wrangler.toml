@@ -2,7 +2,7 @@ name = "ffa-comparateur-api"
 main = "worker.js"
 compatibility_date = "2026-08-31"
 preview_urls = false
-# ranking filters and column sorting use precomputed D1 ranks
+# four-distance ranking and Europe/Paris category cutoff use precomputed D1 ranks
 
 [[d1_databases]]
 binding = "DB"
