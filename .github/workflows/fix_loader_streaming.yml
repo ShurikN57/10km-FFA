@@ -1,0 +1,32 @@
+name: Fix streaming FFA loader
+on:
+  push:
+    paths:
+      - 'tools/fix_loader_streaming.py'
+      - '.github/workflows/fix_loader_streaming.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch mobile loader
+        run: python tools/fix_loader_streaming.py
+      - name: Validate inline JavaScript
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          t=Path('mobile.html').read_text(encoding='utf-8')
+          scripts=re.findall(r'<script(?:\s[^>]*)?>(.*?)</script>',t,re.S)
+          Path('/tmp/mobile-inline.js').write_text('\n'.join(s for s in scripts if s.strip()),encoding='utf-8')
+          PY
+          node --check /tmp/mobile-inline.js
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add mobile.html
+          git commit -m "Use streaming FFA loader and filter impossible 5 km times"
+          git push
