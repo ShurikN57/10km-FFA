@@ -26,12 +26,17 @@ jobs:
           CREATE TABLE athlete_general_rank (
             athlete_id INTEGER PRIMARY KEY,
             distance TEXT NOT NULL,
-            rank INTEGER NOT NULL
+            rank INTEGER NOT NULL,
+            display_order INTEGER NOT NULL
           );
-          INSERT INTO athlete_general_rank(athlete_id,distance,rank)
-          SELECT id,distance,RANK() OVER (PARTITION BY distance ORDER BY pb_sec ASC)
+          INSERT INTO athlete_general_rank(athlete_id,distance,rank,display_order)
+          SELECT id,
+                 distance,
+                 RANK() OVER (PARTITION BY distance ORDER BY pb_sec ASC),
+                 ROW_NUMBER() OVER (PARTITION BY distance ORDER BY pb_sec ASC, full_name ASC, id ASC)
           FROM athletes;
-          CREATE INDEX idx_general_rank_distance_rank ON athlete_general_rank(distance,rank,athlete_id);
+          CREATE UNIQUE INDEX idx_general_rank_distance_order ON athlete_general_rank(distance,display_order);
+          CREATE INDEX idx_general_rank_distance_rank ON athlete_general_rank(distance,rank);
 
           DROP TABLE IF EXISTS ffa_distance_stats;
           CREATE TABLE ffa_distance_stats (
@@ -44,4 +49,4 @@ jobs:
           npx --yes wrangler@latest d1 execute ffa-comparateur --remote --file=/tmp/general_ranks.sql --config=cloudflare-prototype/wrangler.toml --yes
       - name: Verify precomputed ranks
         run: |
-          npx --yes wrangler@latest d1 execute ffa-comparateur --remote --command="SELECT s.distance,s.total,MIN(r.rank) AS min_rank,MAX(r.rank) AS max_rank FROM ffa_distance_stats s JOIN athlete_general_rank r ON r.distance=s.distance GROUP BY s.distance,s.total ORDER BY s.distance;" --config=cloudflare-prototype/wrangler.toml --yes
+          npx --yes wrangler@latest d1 execute ffa-comparateur --remote --command="SELECT s.distance,s.total,MIN(r.rank) AS min_rank,MAX(r.rank) AS max_rank,MIN(r.display_order) AS first_pos,MAX(r.display_order) AS last_pos FROM ffa_distance_stats s JOIN athlete_general_rank r ON r.distance=s.distance GROUP BY s.distance,s.total ORDER BY s.distance;" --config=cloudflare-prototype/wrangler.toml --yes
