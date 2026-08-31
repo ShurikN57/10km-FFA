@@ -1,0 +1,104 @@
+name: Prepare D1 import batches
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/prepare-d1-import.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate D1 SQL batches
+        shell: python
+        run: |
+          import gzip, json, re, unicodedata
+          from pathlib import Path
+
+          ROOT = Path.cwd()
+          OUT = ROOT / 'd1-import-batches'
+          OUT.mkdir(exist_ok=True)
+          SOURCES = [
+              ('5k', ROOT / 'ffa_5km_2024_2026.json.gz'),
+              ('10k', ROOT / 'ffa_base.json.gz'),
+          ]
+          BATCH_ROWS = 2500
+
+          def name_key(value):
+              s = unicodedata.normalize('NFD', str(value or ''))
+              s = ''.join(c for c in s if unicodedata.category(c) != 'Mn').upper()
+              s = re.sub(r'[^A-Z0-9]+', ' ', s)
+              return re.sub(r'\s+', ' ', s).strip()
+
+          def sql(v):
+              if v is None or v == '':
+                  return 'NULL'
+              if isinstance(v, (int, float)):
+                  return str(int(v))
+              return "'" + str(v).replace("'", "''") + "'"
+
+          def rows_from(path):
+              with gzip.open(path, 'rt', encoding='utf-8') as f:
+                  data = json.load(f)
+              return data if isinstance(data, list) else data.get('rows', [])
+
+          chunk_no = 0
+          current = []
+          counts = {'5k': 0, '10k': 0}
+
+          def flush():
+              global chunk_no, current
+              if not current:
+                  return
+              chunk_no += 1
+              p = OUT / f'batch_{chunk_no:04d}.sql'
+              with p.open('w', encoding='utf-8', newline='\n') as out:
+                  out.write('BEGIN TRANSACTION;\n')
+                  out.write('INSERT INTO athletes(distance,full_name,name_key,birth_year,sex,pb_sec,pb_course,pb_date,club,athlete_ffa_id) VALUES\n')
+                  out.write(',\n'.join(current))
+                  out.write(';\nCOMMIT;\n')
+              current = []
+
+          for distance, path in SOURCES:
+              if not path.exists():
+                  raise SystemExit(f'Missing source: {path}')
+              for r in rows_from(path):
+                  if not isinstance(r, list) or len(r) < 8:
+                      continue
+                  pb = int(r[3] or 0)
+                  if pb <= 0:
+                      continue
+                  if distance == '5k' and pb < 720:
+                      continue
+                  vals = [distance, r[0], name_key(r[0]), r[1], r[2], pb, r[4], r[5], r[6], r[7]]
+                  current.append('(' + ','.join(sql(v) for v in vals) + ')')
+                  counts[distance] += 1
+                  if len(current) >= BATCH_ROWS:
+                      flush()
+          flush()
+
+          manifest = OUT / 'manifest.txt'
+          manifest.write_text(
+              f"5k={counts['5k']}\n10k={counts['10k']}\ntotal={counts['5k']+counts['10k']}\nbatches={chunk_no}\nbatch_rows={BATCH_ROWS}\n",
+              encoding='utf-8'
+          )
+          print(manifest.read_text(encoding='utf-8'))
+
+      - name: Show batch sizes
+        run: |
+          du -sh d1-import-batches
+          ls -lh d1-import-batches | head -20
+
+      - name: Upload D1 import artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffa-d1-import-batches
+          path: d1-import-batches/
+          retention-days: 3
