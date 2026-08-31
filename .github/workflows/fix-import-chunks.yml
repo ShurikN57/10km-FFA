@@ -1,0 +1,66 @@
+name: Fix D1 import chunks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-import-chunks.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch import chunking
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('.github/workflows/import-semi-marathon.yml')
+          s=p.read_text(encoding='utf-8')
+          old="""          chunk_size=4000
+          chunk=[]; idx=1
+          def flush():
+            global idx,chunk
+            if not chunk:return
+            sql='INSERT INTO athletes(distance,full_name,name_key,birth_year,sex,pb_sec,pb_course,pb_date,club,athlete_ffa_id) VALUES\\n'+',\\n'.join(chunk)+';\\n'
+            (out/f'{idx:04d}_rows.sql').write_text(sql,encoding='utf-8')
+            idx+=1;chunk=[]
+"""
+          new="""          file_chunk_size=20000
+          statement_size=100
+          chunk=[]; idx=1
+          def flush():
+            global idx,chunk
+            if not chunk:return
+            statements=[]
+            for pos in range(0,len(chunk),statement_size):
+              batch=chunk[pos:pos+statement_size]
+              statements.append('INSERT INTO athletes(distance,full_name,name_key,birth_year,sex,pb_sec,pb_course,pb_date,club,athlete_ffa_id) VALUES\\n'+',\\n'.join(batch)+';')
+            (out/f'{idx:04d}_rows.sql').write_text('\\n'.join(statements)+'\\n',encoding='utf-8')
+            idx+=1;chunk=[]
+"""
+          if s.count(old)!=1:
+            raise SystemExit(f'chunk block count={s.count(old)}')
+          s=s.replace(old,new,1)
+          old2="            if len(chunk)>=chunk_size: flush()"
+          new2="            if len(chunk)>=file_chunk_size: flush()"
+          if s.count(old2)!=1:
+            raise SystemExit(f'chunk threshold count={s.count(old2)}')
+          s=s.replace(old2,new2,1)
+          p.write_text(s,encoding='utf-8')
+          PY
+      - name: Validate workflow text
+        run: |
+          grep -q 'file_chunk_size=20000' .github/workflows/import-semi-marathon.yml
+          grep -q 'statement_size=100' .github/workflows/import-semi-marathon.yml
+          git diff --check
+      - name: Commit fix
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .github/workflows/import-semi-marathon.yml
+          git commit -m "Fix D1 import SQL chunking"
+          git push
