@@ -1,0 +1,62 @@
+name: Temporary distance UI state fix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-distance-ui-state.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preserve UI state across distance reload
+        shell: python
+        run: |
+          from pathlib import Path
+
+          p=Path('mobile.html')
+          s=p.read_text(encoding='utf-8')
+
+          marker='''let activeAppTab="recherche";\nfunction switchAppTab(tab){'''
+          replacement='''const DISTANCE_RELOAD_UI_KEY="comparateur_ffa_distance_reload_ui";\nfunction saveDistanceReloadUi(){\n  const ids=["ffaAthleteSearch","ffaFullSearch","ffaFullYear","ffaFullSex","ffaFullCategory","ffaFullMinPb","ffaFullMaxPb"];\n  const fields={};\n  for(const id of ids){ const el=$(id); if(el) fields[id]=el.value; }\n  try{ sessionStorage.setItem(DISTANCE_RELOAD_UI_KEY,JSON.stringify({tab:activeAppTab,fields})); }catch(e){}\n}\nfunction restoreDistanceReloadUi(){\n  let st=null;\n  try{ st=JSON.parse(sessionStorage.getItem(DISTANCE_RELOAD_UI_KEY)||"null"); sessionStorage.removeItem(DISTANCE_RELOAD_UI_KEY); }catch(e){}\n  if(!st) return;\n  if(st.fields){\n    for(const [id,value] of Object.entries(st.fields)){ const el=$(id); if(el) el.value=value??""; }\n  }\n  if(st.tab && ["classement","recherche","analyse"].includes(st.tab)) switchAppTab(st.tab);\n}\n\nlet activeAppTab="recherche";\nfunction switchAppTab(tab){'''
+          if marker not in s:
+              raise SystemExit('activeAppTab marker not found')
+          s=s.replace(marker,replacement,1)
+
+          old='''    try{ localStorage.setItem("comparateur_ffa_distance",d); }catch(e){}\n    location.reload();'''
+          new='''    saveDistanceReloadUi();\n    try{ localStorage.setItem("comparateur_ffa_distance",d); }catch(e){}\n    location.reload();'''
+          if old not in s:
+              raise SystemExit('reload block not found')
+          s=s.replace(old,new,1)
+
+          old_start='''updateDistanceUi();\nloadFfaDistance(currentDistance);'''
+          new_start='''restoreDistanceReloadUi();\nupdateDistanceUi();\nloadFfaDistance(currentDistance);'''
+          if old_start not in s:
+              raise SystemExit('startup block not found')
+          s=s.replace(old_start,new_start,1)
+
+          p.write_text(s,encoding='utf-8')
+      - name: Validate JavaScript syntax
+        run: |
+          node --check core.js
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          s=Path('mobile.html').read_text(encoding='utf-8')
+          scripts=re.findall(r'<script(?:\s[^>]*)?>([\s\S]*?)</script>',s,re.I)
+          Path('/tmp/mobile-inline.js').write_text('\n'.join(x for x in scripts if x.strip()),encoding='utf-8')
+          PY
+          node --check /tmp/mobile-inline.js
+          node --check sw.js
+      - name: Commit fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add mobile.html
+          git commit -m "Preserve active tab and filters when switching distance"
+          git push
