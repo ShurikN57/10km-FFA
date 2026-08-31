@@ -1,0 +1,62 @@
+name: Apply final Le Routard logo
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'icons/le-routard-final.png.b64'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ImageMagick
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y imagemagick
+      - name: Build approved PNG icons
+        run: |
+          base64 -d icons/le-routard-final.png.b64 > icons/le-routard-final-512.png
+          convert icons/le-routard-final-512.png -resize 512x512 icons/icon-512x512.png
+          convert icons/le-routard-final-512.png -resize 192x192 icons/icon-192x192.png
+          convert icons/le-routard-final-512.png -resize 180x180 icons/apple-touch-icon.png
+          convert icons/le-routard-final-512.png -resize 32x32 icons/favicon-32x32.png
+      - name: Update PWA references
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('mobile.html')
+          s=p.read_text(encoding='utf-8')
+          s=s.replace('<link rel="icon" href="./icons/le-routard.svg" type="image/svg+xml">','<link rel="icon" href="./icons/favicon-32x32.png" type="image/png">')
+          s=s.replace('<link rel="apple-touch-icon" href="./icons/le-routard.svg">','<link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">')
+          s=s.replace('<link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">','<link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">')
+          p.write_text(s,encoding='utf-8')
+
+          Path('manifest.webmanifest').write_text('''{
+            "name": "Le Routard",
+            "short_name": "Le Routard",
+            "start_url": "./mobile.html",
+            "display": "standalone",
+            "background_color": "#0f1115",
+            "theme_color": "#0f1115",
+            "lang": "fr",
+            "icons": [
+              {"src":"./icons/icon-192x192.png","sizes":"192x192","type":"image/png","purpose":"any"},
+              {"src":"./icons/icon-512x512.png","sizes":"512x512","type":"image/png","purpose":"any"}
+            ]
+          }
+          ''',encoding='utf-8')
+          PY
+      - name: Commit final logo and cleanup
+        run: |
+          rm -f icons/le-routard-final.png.b64 icons/le-routard-final-512.png icons/placeholder.txt .github/workflows/apply-final-le-routard-logo.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Use approved Le Routard PWA logo'
+          git push
