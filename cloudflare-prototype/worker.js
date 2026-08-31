@@ -96,36 +96,6 @@ function categoryYears(category) {
   return groups[cat] || null;
 }
 
-async function attachRanks(env, rows, distance, mode) {
-  if (!rows.length) return rows;
-  const statements = rows.map((row) => {
-    if (mode === 'general') {
-      return env.DB.prepare('SELECT COUNT(*) AS n FROM athletes WHERE distance = ? AND pb_sec < ?')
-        .bind(distance, Number(row.pb_sec));
-    }
-    if (mode === 'category') {
-      const bounds = categoryBounds(row.birth_year);
-      if (!bounds || !row.sex) return env.DB.prepare('SELECT 0 AS n');
-      const [minYear, maxYear] = bounds;
-      if (minYear == null) {
-        return env.DB.prepare('SELECT COUNT(*) AS n FROM athletes WHERE distance = ? AND sex = ? AND birth_year <= ? AND pb_sec < ?')
-          .bind(distance, row.sex, maxYear, Number(row.pb_sec));
-      }
-      return env.DB.prepare('SELECT COUNT(*) AS n FROM athletes WHERE distance = ? AND sex = ? AND birth_year BETWEEN ? AND ? AND pb_sec < ?')
-        .bind(distance, row.sex, minYear, maxYear, Number(row.pb_sec));
-    }
-    if (!row.sex) return env.DB.prepare('SELECT 0 AS n');
-    return env.DB.prepare('SELECT COUNT(*) AS n FROM athletes WHERE distance = ? AND sex = ? AND pb_sec < ?')
-      .bind(distance, row.sex, Number(row.pb_sec));
-  });
-  const rankResults = await env.DB.batch(statements);
-  return rows.map((row, i) => {
-    const n = Number(rankResults[i]?.results?.[0]?.n || 0);
-    const bounds = mode === 'category' ? categoryBounds(row.birth_year) : null;
-    return { ...row, rank: n + 1, category: bounds?.[2] || '' };
-  });
-}
-
 export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') return new Response(null, { headers: corsHeaders(request) });
@@ -147,16 +117,28 @@ export default {
 
       const ftsQuery = ftsQueryFromName(q);
       if (!ftsQuery) return json(request, { rows: [] });
+      const afterSep2026 = new Date() >= new Date('2026-09-01T00:00:00Z');
+      const rankColumn = mode === 'general'
+        ? 'rank_general'
+        : mode === 'category'
+          ? (afterSep2026 ? 'rank_cat_after_sep' : 'rank_cat_before_sep')
+          : 'rank_sex';
+
       const stmt = env.DB.prepare(`
-        SELECT a.full_name,a.birth_year,a.sex,a.pb_sec,a.pb_course,a.pb_date,a.club,a.athlete_ffa_id
+        SELECT a.full_name,a.birth_year,a.sex,a.pb_sec,a.pb_course,a.pb_date,a.club,a.athlete_ffa_id,
+               sr.${rankColumn} AS rank
         FROM athlete_fts
         JOIN athletes a ON a.id = athlete_fts.rowid
+        JOIN athlete_search_rank sr ON sr.athlete_id = a.id
         WHERE athlete_fts MATCH ? AND a.distance = ?
         ORDER BY a.birth_year ASC, a.full_name ASC
         LIMIT 100
       `).bind(ftsQuery, distance);
       const res = await stmt.all();
-      const rows = await attachRanks(env, res.results || [], distance, mode);
+      const rows = (res.results || []).map((row) => {
+        const bounds = mode === 'category' ? categoryBounds(row.birth_year) : null;
+        return { ...row, rank: Number(row.rank || 0), category: bounds?.[2] || '' };
+      });
       return json(request, { rows });
     }
 
