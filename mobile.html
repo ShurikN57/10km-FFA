@@ -767,7 +767,11 @@ async function loadFfaDistance(distance){
 }
 document.querySelectorAll("[data-distance]").forEach(btn=>btn.addEventListener("click",()=>{
   const d=btn.getAttribute("data-distance");
-  if(d!==currentDistance) loadFfaDistance(d);
+  if(d===currentDistance || !FFA_DISTANCES[d]) return;
+  // Safari/iOS : repartir dans un document neuf garantit que l'ancienne
+  // grosse base est réellement libérée avant de charger la suivante.
+  try{ localStorage.setItem("comparateur_ffa_distance",d); }catch(e){}
+  location.reload();
 }));
 updateDistanceUi();
 loadFfaDistance(currentDistance);
@@ -865,7 +869,7 @@ updateSortArrows();
 render();
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
-  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(()=>{}));
+  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js?v=20260831e').catch(()=>{}));
 }
 </script>
 </body>

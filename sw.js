@@ -1,4 +1,4 @@
-const SHELL_CACHE='comparateur-ffa-shell-v8';
+const SHELL_CACHE='comparateur-ffa-shell-v9';
 
 self.addEventListener('install',e=>{self.skipWaiting()});
 
