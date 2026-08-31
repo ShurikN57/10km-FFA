@@ -1,0 +1,22 @@
+name: Add ranking name index
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/add-ranking-name-index.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  index:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Add name sorting index
+        run: npx --yes wrangler@latest d1 execute ffa-comparateur --remote --command="CREATE INDEX IF NOT EXISTS idx_athletes_distance_fullname ON athletes(distance,full_name);" --config=cloudflare-prototype/wrangler.toml --yes
