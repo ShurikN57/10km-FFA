@@ -330,6 +330,23 @@ function updateDistanceUi(){
   if(max) max.placeholder=cfg.maxPb;
 }
 
+const DISTANCE_RELOAD_UI_KEY="comparateur_ffa_distance_reload_ui";
+function saveDistanceReloadUi(){
+  const ids=["ffaAthleteSearch","ffaFullSearch","ffaFullYear","ffaFullSex","ffaFullCategory","ffaFullMinPb","ffaFullMaxPb"];
+  const fields={};
+  for(const id of ids){ const el=$(id); if(el) fields[id]=el.value; }
+  try{ sessionStorage.setItem(DISTANCE_RELOAD_UI_KEY,JSON.stringify({tab:activeAppTab,fields})); }catch(e){}
+}
+function restoreDistanceReloadUi(){
+  let st=null;
+  try{ st=JSON.parse(sessionStorage.getItem(DISTANCE_RELOAD_UI_KEY)||"null"); sessionStorage.removeItem(DISTANCE_RELOAD_UI_KEY); }catch(e){}
+  if(!st) return;
+  if(st.fields){
+    for(const [id,value] of Object.entries(st.fields)){ const el=$(id); if(el) el.value=value??""; }
+  }
+  if(st.tab && ["classement","recherche","analyse"].includes(st.tab)) switchAppTab(st.tab);
+}
+
 let activeAppTab="recherche";
 function switchAppTab(tab){
   if(!["classement","recherche","analyse"].includes(tab)) return;
@@ -770,9 +787,11 @@ document.querySelectorAll("[data-distance]").forEach(btn=>btn.addEventListener("
   if(d===currentDistance || !FFA_DISTANCES[d]) return;
   // Safari/iOS : repartir dans un document neuf garantit que l'ancienne
   // grosse base est réellement libérée avant de charger la suivante.
+  saveDistanceReloadUi();
   try{ localStorage.setItem("comparateur_ffa_distance",d); }catch(e){}
   location.reload();
 }));
+restoreDistanceReloadUi();
 updateDistanceUi();
 loadFfaDistance(currentDistance);
 
