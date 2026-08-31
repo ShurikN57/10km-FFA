@@ -177,6 +177,33 @@ export default {
       const pageSize = 100;
       const offset = (page - 1) * pageSize;
 
+      const plainGeneral = !sex && !category && !year && !q &&
+        !(Number.isFinite(minPb) && minPb > 0) &&
+        !(Number.isFinite(maxPb) && maxPb > 0);
+
+      if (plainGeneral) {
+        const [rowsRes, statsRes] = await env.DB.batch([
+          env.DB.prepare(`
+            SELECT a.full_name,a.birth_year,a.sex,a.pb_sec,a.pb_course,a.pb_date,a.club,a.athlete_ffa_id,r.rank
+            FROM athlete_general_rank r
+            JOIN athletes a ON a.id = r.athlete_id
+            WHERE r.distance = ?
+            ORDER BY r.display_order ASC
+            LIMIT ? OFFSET ?
+          `).bind(distance, pageSize, offset),
+          env.DB.prepare('SELECT total FROM ffa_distance_stats WHERE distance = ?').bind(distance)
+        ]);
+        const total = Number(statsRes?.results?.[0]?.total || 0);
+        const pages = Math.max(1, Math.ceil(total / pageSize));
+        return json(request, {
+          page: Math.min(page, pages),
+          pageSize,
+          total,
+          pages,
+          rows: rowsRes?.results || []
+        });
+      }
+
       const scopeWhere = ['distance = ?'];
       const scopeBinds = [distance];
       if (sex) { scopeWhere.push('sex = ?'); scopeBinds.push(sex); }
