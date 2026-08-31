@@ -349,6 +349,8 @@ let ffaSexRank=new Map();
 let ffaCategoryRank=new Map();
 let ffaGeneralOrder=[];
 let ffaCategoryRanksReady=false;
+let ffaGeneralOrder=[];
+let ffaCategoryRanksReady=false;
 function currentFfaCategory(p){
   const y=Number(p.annee_naissance);
   if(!Number.isFinite(y)) return "";
@@ -456,6 +458,7 @@ function renderFfaAthleteSearch(){
     const url=getFfaProfileUrl(p);
     const name=esc(p.full_name||"");
     const cat=currentFfaCategory(p);
+    if(ffaRankMode==="category") ensureFfaCategoryRanks();
     if(ffaRankMode==="category") ensureFfaCategoryRanks();
     const rank = ffaRankMode==="general" ? ffaGeneralRank.get(p) : ffaRankMode==="category" ? ffaCategoryRank.get(p) : ffaSexRank.get(p);
     const rankText=rank ? (rank===1 ? "1er" : Number(rank).toLocaleString("fr-FR")+"e") : "";
@@ -716,6 +719,8 @@ loadFfaRows().then(rows=>{
   setImportEnabled(true);
   if(pendingAutoParse){ pendingAutoParse=false; runPasteAnalysis(); }
   else if(race.length){ compute(); }
+  if(activeAppTab==="classement") renderFullFfaRanking(false);
+  else if(activeAppTab==="recherche") renderFfaAthleteSearch();
 }).catch(err=>{
   $("ffaMsg").textContent="Erreur de chargement de la base FFA : "+(err&&err.message?err.message:err)+". Recharge la page.";
 });
