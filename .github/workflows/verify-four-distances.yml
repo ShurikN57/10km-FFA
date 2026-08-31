@@ -1,0 +1,40 @@
+name: Verify four FFA distances
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-four-distances.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify health ranking and search
+        run: |
+          set -e
+          python - <<'PY'
+          import json,urllib.request
+          base='https://ffa-comparateur-api.57compte2.workers.dev'
+          def get(path):
+              with urllib.request.urlopen(base+path,timeout=30) as r:
+                  return json.load(r)
+          h=get('/health')
+          assert h.get('ok') is True and h.get('athletes')==1445655,h
+          semi=get('/ranking?distance=semi&page=1')
+          mara=get('/ranking?distance=marathon&page=1')
+          assert semi.get('total')==497767 and semi.get('rows'),semi
+          assert mara.get('total')==297166 and mara.get('rows'),mara
+          ss=get('/search?distance=semi&q=DAGUINOS&mode=general')
+          ms=get('/search?distance=marathon&q=AMDOUNI&mode=general')
+          assert any('DAGUINOS' in str(x.get('full_name','')).upper() for x in ss.get('rows',[])),ss
+          assert any('AMDOUNI' in str(x.get('full_name','')).upper() for x in ms.get('rows',[])),ms
+          print('health',h)
+          print('semi ranking',semi['total'],semi['rows'][0]['full_name'])
+          print('marathon ranking',mara['total'],mara['rows'][0]['full_name'])
+          print('semi search',len(ss['rows']))
+          print('marathon search',len(ms['rows']))
+          PY
