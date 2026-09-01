@@ -1,0 +1,29 @@
+name: Temp deploy FFA filter worker
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/tmp-deploy-worker-filter.yml'
+permissions:
+  contents: write
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Worker
+        run: node --check cloudflare-prototype/worker.js
+      - name: Deploy Worker
+        working-directory: cloudflare-prototype
+        run: npx --yes wrangler@latest deploy
+      - name: Remove temporary workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm .github/workflows/tmp-deploy-worker-filter.yml
+          git add .github/workflows/tmp-deploy-worker-filter.yml
+          git commit -m "Remove temporary worker deploy workflow"
+          git push
