@@ -21,14 +21,26 @@ jobs:
           python - <<'PY'
           from PIL import Image
           from pathlib import Path
+          import base64, io
+
           src=Path('icons/apple-touch-icon.png')
-          im=Image.open(src).convert('RGBA')
+          raw=src.read_bytes()
+
+          # Some previous uploads were stored as ASCII base64 text instead of raw PNG bytes.
+          # Decode that form first, then verify we really have a PNG before processing.
+          if not raw.startswith(b'\x89PNG\r\n\x1a\n'):
+              text=b''.join(raw.split())
+              if text.startswith(b'iVBOR'):
+                  raw=base64.b64decode(text, validate=True)
+          assert raw.startswith(b'\x89PNG\r\n\x1a\n'), raw[:16]
+
+          im=Image.open(io.BytesIO(raw)).convert('RGBA')
           bg=Image.new('RGBA', im.size, (15,32,58,255))
           bg.alpha_composite(im)
           out=bg.convert('RGB').resize((180,180), Image.Resampling.LANCZOS)
-          out.save('apple-touch-icon.png', format='PNG', optimize=True, compress_level=9)
-          out.save('icons/apple-touch-icon.png', format='PNG', optimize=True, compress_level=9)
-          for p in [Path('apple-touch-icon.png'),Path('icons/apple-touch-icon.png')]:
+
+          for p in [Path('apple-touch-icon.png'), Path('icons/apple-touch-icon.png')]:
+              out.save(p, format='PNG', optimize=True, compress_level=9)
               data=p.read_bytes()
               assert data[:8] == b'\x89PNG\r\n\x1a\n', (p, data[:8])
               chk=Image.open(p)
@@ -41,11 +53,11 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+          import re
           url='https://shurikn57.github.io/10km-FFA/apple-touch-icon.png'
           for name in ['index.html','mobile.html']:
               p=Path(name)
               s=p.read_text()
-              import re
               s=re.sub(r'<link rel="apple-touch-icon"[^>]*>', f'<link rel="apple-touch-icon" sizes="180x180" href="{url}">', s)
               s=re.sub(r'<link rel="apple-touch-icon-precomposed"[^>]*>', f'<link rel="apple-touch-icon-precomposed" sizes="180x180" href="{url}">', s)
               p.write_text(s)
