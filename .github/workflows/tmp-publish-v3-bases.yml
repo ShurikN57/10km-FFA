@@ -4,8 +4,6 @@ on:
   push:
     branches: [main]
     paths:
-      - 'tmp-v3-payload/**'
-      - 'tmp-v3-import-workflow.yml'
       - '.github/workflows/tmp-publish-v3-bases.yml'
 
 permissions:
@@ -40,14 +38,13 @@ jobs:
             mv "$rebuilt" "$target"
           done
 
-      - name: Publish bases and hand over to the D1 import workflow
+      - name: Publish the four validated bases
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          mv tmp-v3-import-workflow.yml .github/workflows/tmp-import-v3-d1.yml
-          git add ffa_5km_2024_2026.json.gz ffa_base.json.gz ffa_semi_2024_2026.json.gz ffa_marathon_2024_2026.json.gz .github/workflows/tmp-import-v3-d1.yml
-          git rm -r tmp-v3-payload .github/workflows/tmp-publish-v3-bases.yml
+          git add ffa_5km_2024_2026.json.gz ffa_base.json.gz ffa_semi_2024_2026.json.gz ffa_marathon_2024_2026.json.gz
+          git rm -r tmp-v3-payload
           git commit -m "Publish validated FFA V3 compact bases"
           git push
