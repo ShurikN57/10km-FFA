@@ -1,11 +1,10 @@
-name: Import ranking scope metadata into D1
+name: Resume ranking scope metadata publication
 
 on:
   push:
     branches: [main]
     paths:
       - '.github/workflows/tmp-import-ranking-scopes.yml'
-      - 'tmp-ranking-scope/**'
   workflow_dispatch:
 
 permissions:
@@ -16,169 +15,37 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  import:
+  resume:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 45
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Reassemble and verify metadata
-        shell: bash
-        run: |
-          set -euo pipefail
-          : > /tmp/ffa_scope_metadata.json.gz
-          for part in tmp-ranking-scope/ffa_scope_metadata.json.gz.part.*; do
-            cat "$part" >> /tmp/ffa_scope_metadata.json.gz
-          done
-          echo 'c9ca1eb81b4d9ebc42c57a32d771f259ccc84e11d1ac9ca005b25def6e8d99af  /tmp/ffa_scope_metadata.json.gz' | sha256sum -c -
-          gzip -t /tmp/ffa_scope_metadata.json.gz
-
-      - name: Verify current D1 athlete ID mapping
-        shell: bash
-        run: |
-          set -euo pipefail
-          result=$(npx --yes wrangler@latest d1 execute ffa-comparateur --remote --command="SELECT distance,MIN(id) AS min_id,MAX(id) AS max_id,COUNT(*) AS total FROM athletes GROUP BY distance ORDER BY min_id;" --config=cloudflare-prototype/wrangler.toml --yes --json)
-          echo "$result" | jq '.[0].results'
-          echo "$result" | jq -e '.[0].results == [
-            {"distance":"5k","min_id":1,"max_id":124626,"total":124626},
-            {"distance":"10k","min_id":124627,"max_id":657711,"total":533085},
-            {"distance":"semi","min_id":657712,"max_id":1148590,"total":490879},
-            {"distance":"marathon","min_id":1148591,"max_id":1437065,"total":288475}
-          ]'
-
-      - name: Validate metadata and prepare SQL chunks
-        shell: python
-        run: |
-          import gzip, json
-          from pathlib import Path
-
-          source = Path('/tmp/ffa_scope_metadata.json.gz')
-          out = Path('/tmp/ffa_scope_sql')
-          out.mkdir(exist_ok=True)
-          with gzip.open(source, 'rt', encoding='utf-8') as handle:
-            data = json.load(handle)
-          expected_counts = {'5k':124626,'10k':533085,'semi':490879,'marathon':288475}
-          if data.get('schema_version') != 1 or data.get('schema') != ['league','department','race_year']:
-            raise SystemExit('Schéma de métadonnées inattendu')
-          if data.get('distance_counts') != expected_counts or data.get('athlete_count') != 1437065:
-            raise SystemExit('Volumes de métadonnées inattendus')
-          rows = data.get('rows')
-          if not isinstance(rows, list) or len(rows) != 1437065:
-            raise SystemExit('Nombre de lignes de métadonnées inattendu')
-
-          create = '''
-          DROP TABLE IF EXISTS athlete_scope_next;
-          DROP TABLE IF EXISTS ffa_scope_options_next;
-          CREATE TABLE athlete_scope_next (
-            athlete_id INTEGER PRIMARY KEY,
-            distance TEXT NOT NULL,
-            league TEXT NOT NULL,
-            department TEXT NOT NULL,
-            race_year INTEGER
-          );
-          '''
-          (out/'0000_create.sql').write_text(create, encoding='utf-8')
-
-          ranges=[]
-          first=1
-          for distance in ('5k','10k','semi','marathon'):
-            last=first+expected_counts[distance]-1
-            ranges.append((first,last,distance))
-            first=last+1
-
-          def sql_text(value):
-            return "'"+str(value).replace("'","''")+"'"
-
-          chunk=[]
-          chunk_no=0
-          file_rows=20000
-          statement_rows=200
-          def flush():
-            global chunk,chunk_no
-            if not chunk: return
-            chunk_no+=1
-            statements=[]
-            for pos in range(0,len(chunk),statement_rows):
-              batch=chunk[pos:pos+statement_rows]
-              statements.append('INSERT INTO athlete_scope_next(athlete_id,distance,league,department,race_year) VALUES\n'+',\n'.join(batch)+';')
-            (out/f'{chunk_no:04d}_rows.sql').write_text('\n'.join(statements)+'\n',encoding='utf-8')
-            chunk=[]
-
-          distance_index=0
-          for athlete_id,row in enumerate(rows,1):
-            if not isinstance(row,list) or len(row)!=3:
-              raise SystemExit(f'Ligne invalide: {athlete_id}')
-            while athlete_id>ranges[distance_index][1]: distance_index+=1
-            distance=ranges[distance_index][2]
-            league=str(row[0] or '').strip().upper()
-            department=str(row[1] or '').strip().upper()
-            year=int(row[2] or 0)
-            if year and not 2023<=year<=2026:
-              raise SystemExit(f'Année de course invalide: {athlete_id}={year}')
-            chunk.append(f"({athlete_id},{sql_text(distance)},{sql_text(league)},{sql_text(department)},{year if year else 'NULL'})")
-            if len(chunk)>=file_rows: flush()
-          flush()
-          print(f'{len(rows):,} métadonnées; {chunk_no} fichiers SQL')
-
-      - name: Create staging table
-        run: npx --yes wrangler@latest d1 execute ffa-comparateur --remote --file=/tmp/ffa_scope_sql/0000_create.sql --config=cloudflare-prototype/wrangler.toml --yes
-
-      - name: Import scope metadata
-        shell: bash
-        run: |
-          set -euo pipefail
-          total=$(find /tmp/ffa_scope_sql -name '*_rows.sql' | wc -l)
-          current=0
-          for file in /tmp/ffa_scope_sql/*_rows.sql; do
-            current=$((current+1))
-            echo "Import $current/$total"
-            npx --yes wrangler@latest d1 execute ffa-comparateur --remote --file="$file" --config=cloudflare-prototype/wrangler.toml --yes
-          done
-
-      - name: Build scope indexes one at a time
-        shell: bash
-        run: |
-          set -euo pipefail
-          indexes=(
-            "CREATE INDEX idx_scope_next_distance_league ON athlete_scope_next(distance,league,athlete_id)"
-            "CREATE INDEX idx_scope_next_distance_department ON athlete_scope_next(distance,department,athlete_id)"
-            "CREATE INDEX idx_scope_next_distance_race_year ON athlete_scope_next(distance,race_year,athlete_id)"
-            "CREATE INDEX idx_scope_next_combined ON athlete_scope_next(distance,league,department,race_year,athlete_id)"
-            "CREATE INDEX IF NOT EXISTS idx_athletes_distance_club_pb ON athletes(distance,club,pb_sec,id)"
-          )
-          for sql in "${indexes[@]}"; do
-            npx --yes wrangler@latest d1 execute ffa-comparateur --remote --command="$sql" --config=cloudflare-prototype/wrangler.toml --yes
-          done
-
-      - name: Build precomputed filter options
-        shell: bash
-        run: |
-          cat > /tmp/ffa_scope_options.sql <<'SQL'
-          CREATE TABLE ffa_scope_options_next (
-            distance TEXT NOT NULL,
-            league TEXT NOT NULL,
-            department TEXT NOT NULL,
-            club TEXT NOT NULL,
-            race_year INTEGER
-          );
-          INSERT INTO ffa_scope_options_next(distance,league,department,club,race_year)
-          SELECT DISTINCT s.distance,s.league,s.department,a.club,s.race_year
-          FROM athlete_scope_next s JOIN athletes a ON a.id=s.athlete_id;
-          CREATE INDEX idx_scope_options_next_distance
-          ON ffa_scope_options_next(distance,league,department,club,race_year);
-          SQL
-          npx --yes wrangler@latest d1 execute ffa-comparateur --remote --file=/tmp/ffa_scope_options.sql --config=cloudflare-prototype/wrangler.toml --yes
-
-      - name: Verify staging volumes
+      - name: Verify completed staging metadata
         shell: bash
         run: |
           set -euo pipefail
           result=$(npx --yes wrangler@latest d1 execute ffa-comparateur --remote --command="SELECT SUM(distance='5k') AS n5,SUM(distance='10k') AS n10,SUM(distance='semi') AS ns,SUM(distance='marathon') AS nm,COUNT(*) AS total FROM athlete_scope_next;" --config=cloudflare-prototype/wrangler.toml --yes --json)
           echo "$result" | jq '.[0].results[0]'
           echo "$result" | jq -e '.[0].results[0] | .n5==124626 and .n10==533085 and .ns==490879 and .nm==288475 and .total==1437065'
+
+      - name: Create filter options table
+        shell: bash
+        run: |
+          npx --yes wrangler@latest d1 execute ffa-comparateur --remote --command="DROP TABLE IF EXISTS ffa_scope_options_next; CREATE TABLE ffa_scope_options_next(distance TEXT NOT NULL,league TEXT NOT NULL,department TEXT NOT NULL,club TEXT NOT NULL,race_year INTEGER);" --config=cloudflare-prototype/wrangler.toml --yes
+          npx --yes wrangler@latest d1 execute ffa-comparateur --remote --command="INSERT INTO ffa_scope_options_next(distance,league,department,club,race_year) SELECT DISTINCT s.distance,s.league,s.department,COALESCE(a.club,''),s.race_year FROM athlete_scope_next s JOIN athletes a ON a.id=s.athlete_id;" --config=cloudflare-prototype/wrangler.toml --yes
+          npx --yes wrangler@latest d1 execute ffa-comparateur --remote --command="CREATE INDEX idx_scope_options_next_distance ON ffa_scope_options_next(distance,league,department,club,race_year);" --config=cloudflare-prototype/wrangler.toml --yes
+
+      - name: Verify staging options
+        shell: bash
+        run: |
+          set -euo pipefail
+          result=$(npx --yes wrangler@latest d1 execute ffa-comparateur --remote --command="SELECT distance,COUNT(*) AS options FROM ffa_scope_options_next GROUP BY distance ORDER BY distance;" --config=cloudflare-prototype/wrangler.toml --yes --json)
+          echo "$result" | jq '.[0].results'
+          echo "$result" | jq -e '.[0].results | length==4 and all(.options>0)'
 
       - name: Publish scope tables
         shell: bash
@@ -195,5 +62,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          result=$(npx --yes wrangler@latest d1 execute ffa-comparateur --remote --command="SELECT SUM(distance='5k') AS n5,SUM(distance='10k') AS n10,SUM(distance='semi') AS ns,SUM(distance='marathon') AS nm,COUNT(*) AS total FROM athlete_scope;" --config=cloudflare-prototype/wrangler.toml --yes --json)
+          echo "$result" | jq -e '.[0].results[0] | .n5==124626 and .n10==533085 and .ns==490879 and .nm==288475 and .total==1437065'
           npx --yes wrangler@latest d1 execute ffa-comparateur --remote --command="SELECT distance,COUNT(*) AS total,SUM(league<>'') AS with_region,SUM(department<>'') AS with_department,SUM(race_year IS NOT NULL) AS with_race_year FROM athlete_scope GROUP BY distance ORDER BY distance;" --config=cloudflare-prototype/wrangler.toml --yes
           npx --yes wrangler@latest d1 execute ffa-comparateur --remote --command="SELECT COUNT(*) AS n FROM athlete_scope WHERE distance='10k' AND league='G-E' AND department='057';" --config=cloudflare-prototype/wrangler.toml --yes
