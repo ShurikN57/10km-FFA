@@ -378,6 +378,13 @@ function restoreDistanceReloadUi(){
   if(st.fields){
     for(const [id,value] of Object.entries(st.fields)){ const el=$(id); if(el) el.value=value??""; }
   }
+  if(st.tab==="analyse"){
+    const saved=loadLastPaste();
+    if(saved){
+      $("paste").value=saved;
+      pendingAutoParse=true;
+    }
+  }
   if(st.tab && ["classement","recherche","analyse"].includes(st.tab)) switchAppTab(st.tab);
 }
 
@@ -761,10 +768,26 @@ function setImportEnabled(on){
   if(el) el.disabled=!on;
 }
 
-function storageKey(){ return "comparateur_ffa_lastPaste_"+currentDistance; }
-function saveLastPaste(text){ try{ localStorage.setItem(storageKey(),text); }catch(e){} }
-function loadLastPaste(){ try{ return localStorage.getItem(storageKey())||""; }catch(e){ return ""; } }
-function clearLastPaste(){ try{ localStorage.removeItem(storageKey()); }catch(e){} }
+const LAST_PASTE_KEY="comparateur_ffa_lastPaste";
+const LEGACY_LAST_PASTE_KEYS=Object.keys(FFA_DISTANCES).map(d=>LAST_PASTE_KEY+"_"+d);
+function saveLastPaste(text){ try{ localStorage.setItem(LAST_PASTE_KEY,text); }catch(e){} }
+function loadLastPaste(){
+  try{
+    const shared=localStorage.getItem(LAST_PASTE_KEY);
+    if(shared) return shared;
+    for(const key of LEGACY_LAST_PASTE_KEYS){
+      const legacy=localStorage.getItem(key);
+      if(legacy){ localStorage.setItem(LAST_PASTE_KEY,legacy); return legacy; }
+    }
+  }catch(e){}
+  return "";
+}
+function clearLastPaste(){
+  try{
+    localStorage.removeItem(LAST_PASTE_KEY);
+    for(const key of LEGACY_LAST_PASTE_KEYS) localStorage.removeItem(key);
+  }catch(e){}
+}
 
 function runPasteAnalysis(){
   $("restoreCard").style.display="none";
