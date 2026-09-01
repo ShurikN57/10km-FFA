@@ -178,10 +178,16 @@ th{background:#141922}
 .rank-filter-grid-pb{grid-template-columns:1fr 1fr}
 .rank-filter-grid select,.rank-filter-grid input{width:100%;min-width:0;height:46px;min-height:46px;margin:0;padding:9px;border-color:rgba(148,163,184,.16)!important}
 .rank-filter-grid select{font-size:14px!important;padding:9px 24px 9px 9px}
-.ranking-toolbar{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:7px;margin-bottom:9px;align-items:center}
-.ranking-toolbar input{width:100%;min-width:0;height:46px;min-height:46px;margin:0;padding:9px 10px;border-color:rgba(148,163,184,.16)!important}
-.ranking-quick-btn{height:46px;min-height:46px;padding:8px 10px;border-color:rgba(148,163,184,.16);background:#1a1f28;font-size:13px;font-weight:800;white-space:nowrap}
+.ranking-toolbar{display:flex;gap:7px;margin-bottom:8px;align-items:center}
+.ranking-toolbar input{flex:1;width:auto;min-width:0;height:44px;min-height:44px;margin:0;padding:8px 10px;border-color:rgba(148,163,184,.16)!important}
+.ranking-quick-btn{height:44px;min-height:44px;padding:7px 10px;border-color:rgba(148,163,184,.16);background:#1a1f28;font-size:13px;font-weight:800;white-space:nowrap}
+.ranking-toolbar .ranking-quick-btn{flex:0 0 112px;width:112px}
 .ranking-quick-btn.active{color:#fff;border-color:rgba(76,145,255,.7);background:rgba(49,120,232,.28)}
+.ranking-shortcuts{display:flex;align-items:center;gap:8px;height:36px;margin-bottom:9px}
+.ranking-sex-segments{display:grid;grid-template-columns:repeat(3,1fr);gap:3px;width:148px;height:36px;padding:3px;border:1px solid rgba(148,163,184,.16);border-radius:12px;background:#171d26}
+.ranking-sex-segments button{height:28px;min-height:28px;padding:3px 8px;border:0;border-radius:9px;background:transparent;color:#aeb7c5;font-size:12px;font-weight:800;box-shadow:none}
+.ranking-sex-segments button.active{background:#3178e8;color:#fff}
+.ranking-shortcuts .ranking-quick-btn{height:36px;min-height:36px;padding:5px 12px;border-radius:12px;font-size:12px}
 .ffa-filter-drawer{display:none;position:fixed;inset:0;z-index:1400}
 .ffa-filter-drawer.show{display:block}
 .ffa-filter-backdrop{position:absolute;inset:0;border:0;border-radius:0;background:rgba(0,0,0,.64);backdrop-filter:blur(3px)}
@@ -195,9 +201,7 @@ th{background:#141922}
 .ffa-filter-field.full{grid-column:1/-1}
 .ffa-filter-field>span{font-size:11px;color:#9ba5b3;padding-left:3px}
 .ffa-filter-field select,.ffa-filter-field input:not([type="hidden"]){width:100%;min-width:0;height:44px;min-height:44px;margin:0;padding:8px 9px;border-color:rgba(148,163,184,.14)!important}
-.ffa-sex-segments{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:4px;border:1px solid rgba(148,163,184,.16);border-radius:14px;background:#171d26}
-.ffa-sex-segments button{min-height:37px;padding:6px;border:0;background:transparent;color:#aeb7c5;font-size:13px;font-weight:800;box-shadow:none}
-.ffa-sex-segments button.active{background:#3178e8;color:#fff}
+#ffaFullClub{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:2.5rem!important}
 .ffa-filter-apply{width:100%;margin-top:15px;min-height:45px}
 .rank-pagination{display:flex;gap:8px;margin-top:10px}
 .rank-pagination button{flex:1}
@@ -244,9 +248,17 @@ th{background:#141922}
           </div>
         </div>
         <div class="ranking-toolbar">
-          <input id="ffaFullSearch" type="search" placeholder="Rechercher nom / prénom...">
-          <button type="button" id="ffaFrenchQuick" class="ranking-quick-btn" aria-pressed="false">🇫🇷 FR</button>
+          <input id="ffaFullSearch" type="search" placeholder="Nom, prénom...">
           <button type="button" id="ffaFilterOpen" class="ranking-quick-btn" aria-expanded="false" aria-controls="ffaFiltersDrawer">⚙️ Filtres</button>
+        </div>
+        <div class="ranking-shortcuts">
+          <input id="ffaFullSex" type="hidden" value="">
+          <div class="ranking-sex-segments" role="group" aria-label="Sexe">
+            <button type="button" data-ffa-sex="" class="active">Tous</button>
+            <button type="button" data-ffa-sex="M">H</button>
+            <button type="button" data-ffa-sex="F">F</button>
+          </div>
+          <button type="button" id="ffaFrenchQuick" class="ranking-quick-btn" aria-pressed="false">🇫🇷 FR</button>
           <input id="ffaFullFrench" type="checkbox" hidden>
         </div>
         <div id="ffaFiltersDrawer" class="ffa-filter-drawer" aria-hidden="true">
@@ -258,15 +270,6 @@ th{background:#141922}
               <button type="button" class="ffa-filter-close" data-ffa-filter-close aria-label="Fermer">×</button>
             </div>
             <div class="ffa-filter-fields">
-              <div class="ffa-filter-field full">
-                <span>Sexe</span>
-                <input id="ffaFullSex" type="hidden" value="">
-                <div class="ffa-sex-segments" role="group" aria-label="Sexe">
-                  <button type="button" data-ffa-sex="" class="active">Tous</button>
-                  <button type="button" data-ffa-sex="M">H</button>
-                  <button type="button" data-ffa-sex="F">F</button>
-                </div>
-              </div>
               <label class="ffa-filter-field"><span>Catégorie</span><select id="ffaFullCategory"><option value="">Toutes</option><option>CA</option><option>JU</option><option>ES</option><option>SE</option><option>M0</option><option>M1</option><option>M2</option><option>M3</option><option>M4</option><option>M5</option><option>M6</option><option>M7</option><option>M8</option><option>M9</option><option>M10</option></select></label>
               <label class="ffa-filter-field"><span>Année naissance</span><input id="ffaFullYear" inputmode="numeric" placeholder="Ex. 1985"></label>
               <label class="ffa-filter-field"><span>Région</span><select id="ffaFullLeague"><option value="">Toutes</option></select></label>
@@ -690,7 +693,7 @@ async function loadFfaScopeOptions(){
   }
 }
 function ffaSecondaryFilterCount(){
-  return ['ffaFullSex','ffaFullCategory','ffaFullYear','ffaFullLeague','ffaFullDepartment','ffaFullClub','ffaFullRaceYear','ffaFullMinPb','ffaFullMaxPb']
+  return ['ffaFullCategory','ffaFullYear','ffaFullLeague','ffaFullDepartment','ffaFullClub','ffaFullRaceYear','ffaFullMinPb','ffaFullMaxPb']
     .reduce((count,id)=>count+(String($(id)?.value||'').trim()?1:0),0);
 }
 function syncFfaFilterUi(){
@@ -849,8 +852,6 @@ document.querySelectorAll('[data-ffa-filter-close]').forEach(button=>button.addE
 document.addEventListener('keydown',event=>{if(event.key==='Escape'&&$('ffaFiltersDrawer')?.classList.contains('show'))setFfaFilterDrawer(false);});
 const _ffaFullReset=$("ffaFullReset");
 if(_ffaFullReset) _ffaFullReset.addEventListener("click",()=>{
-  $("ffaFullSearch").value="";
-  $("ffaFullSex").value="";
   $("ffaFullCategory").value="";
   $("ffaFullYear").value="";
   $("ffaFullLeague").value="";
@@ -859,9 +860,6 @@ if(_ffaFullReset) _ffaFullReset.addEventListener("click",()=>{
   $("ffaFullRaceYear").value="";
   $("ffaFullMinPb").value="";
   $("ffaFullMaxPb").value="";
-  if($("ffaFullFrench")) $("ffaFullFrench").checked=false;
-  ffaFullSort='rank';
-  ffaFullSortDir='asc';
   populateFfaScopeOptions();
   syncFfaFilterUi();
   renderFullFfaRanking(true);
