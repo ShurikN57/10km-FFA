@@ -1,0 +1,35 @@
+name: Restore known working iOS icon file
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/restore-known-working-icon-file.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore exact working Apple touch icon
+        run: |
+          git show 834829929094ff58293832ddc574d0b87648bcb0:icons/apple-touch-icon.png > icons/apple-touch-icon.png
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('icons/apple-touch-icon.png')
+          data=p.read_bytes()
+          assert data[:8] == b'\x89PNG\r\n\x1a\n'
+          assert len(data) == 14172
+          print('PNG OK', len(data), data[:8].hex())
+          PY
+      - name: Commit and self-remove
+        run: |
+          rm -f .github/workflows/restore-known-working-icon-file.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add icons/apple-touch-icon.png .github/workflows/restore-known-working-icon-file.yml
+          git commit -m 'Restore exact previously working iOS icon file'
+          git push
