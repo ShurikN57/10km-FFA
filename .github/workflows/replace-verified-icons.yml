@@ -1,0 +1,32 @@
+name: Replace verified PWA icons
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/replace-verified-icons.yml']
+permissions:
+  contents: write
+jobs:
+  replace:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify current icon files
+        run: |
+          file icons/*.png
+          python - <<'PY'
+          from pathlib import Path
+          import struct
+          for p in Path('icons').glob('*.png'):
+              b=p.read_bytes()
+              print(p, b[:8].hex(), len(b))
+              assert b[:8] == b'\x89PNG\r\n\x1a\n'
+          PY
+      - name: Remove temporary workflow
+        run: |
+          rm .github/workflows/replace-verified-icons.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m 'Remove temporary verified icon workflow' || true
+          git push
