@@ -4,8 +4,8 @@
 function chronoFromSec(sec) {
   sec=Math.round(Number(sec)||0);
   const h=Math.floor(sec/3600), m=Math.floor((sec%3600)/60), ss=sec%60;
-  return h ? h+"h"+String(m).padStart(2,"0")+"'"+String(ss).padStart(2,"0")+"''"
-           : m+"'"+String(ss).padStart(2,"0")+"''";
+  return h ? h+"h"+String(m).padStart(2,"0")+"'"+String(ss).padStart(2,"0")
+           : m+"'"+String(ss).padStart(2,"0");
 }
 function buildFfaFromCompact(rows){
   return rows.map(r=>({
@@ -65,7 +65,7 @@ function fmtDelta(sec) {
   const sign = sec >= 0 ? "+" : "-";
   sec = Math.abs(Math.round(sec));
   const m = Math.floor(sec/60), s=sec%60;
-  return sign + (m ? m+"'" : "") + String(s).padStart(2,"0")+"''";
+  return sign + (m ? m+"'" : "") + String(s).padStart(2,"0");
 }
 function splitFullName(s) {
   s = clean(s);
@@ -229,8 +229,8 @@ function excelTimeToText(v) {
     let sec = Math.round(v * 86400);
     if(sec >= 0 && sec <= 6*3600) {
       const h=Math.floor(sec/3600), m=Math.floor((sec%3600)/60), ss=sec%60;
-      return h ? `${h}h${String(m).padStart(2,"0")}'${String(ss).padStart(2,"0")}''`
-               : `${m}'${String(ss).padStart(2,"0")}''`;
+      return h ? `${h}h${String(m).padStart(2,"0")}'${String(ss).padStart(2,"0")}`
+               : `${m}'${String(ss).padStart(2,"0")}`;
     }
   }
   return clean(v);

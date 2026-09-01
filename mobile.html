@@ -69,6 +69,18 @@ tr:hover td { background:#181d26 }
 .small { color:var(--muted); font-size:12px }
 #ffaAthleteSearchMsg:empty { display:none }
 #ffaFullMsg { font-size:11px; color:#7f8997; min-height:0 }
+.ffa-search-wrap{position:relative}
+.ffa-search-wrap #ffaAthleteSearch{padding-right:42px!important}
+.ffa-search-clear{position:absolute;right:8px;top:50%;transform:translateY(-50%);width:30px;height:30px;min-height:30px;padding:0;border:0;background:transparent;color:#aeb6c2;font-size:24px;line-height:1;display:none;box-shadow:none}
+.ffa-search-clear.show{display:grid;place-items:center}
+.ffa-french-filter{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px;margin:0 0 9px;padding:8px 11px;border:1px solid #343d4c;background:#1a1f28;border-radius:15px}
+.ffa-french-filter span{font-size:14px;font-weight:700;color:#d9dee7}
+.ffa-switch{position:relative;width:48px;height:28px;flex:0 0 48px}
+.ffa-switch input{position:absolute;opacity:0;pointer-events:none}
+.ffa-switch i{position:absolute;inset:0;border-radius:999px;background:#343b47;border:1px solid #46505f;transition:.18s}
+.ffa-switch i:before{content:"";position:absolute;width:22px;height:22px;left:2px;top:2px;border-radius:50%;background:#d4d8df;transition:.18s}
+.ffa-switch input:checked+i{background:#3178e8;border-color:#67a1ff}
+.ffa-switch input:checked+i:before{transform:translateX(20px);background:#fff}
 
 /* ===== UI 2026 : navigation mobile par onglets ===== */
 :root{
@@ -222,6 +234,10 @@ th{background:#141922}
           <input id="ffaFullMinPb" inputmode="numeric" placeholder="PB min, ex 30:00">
           <input id="ffaFullMaxPb" inputmode="numeric" placeholder="PB max, ex 35:00">
         </div>
+        <label class="ffa-french-filter" for="ffaFullFrench">
+          <span>Français uniquement</span>
+          <span class="ffa-switch"><input id="ffaFullFrench" type="checkbox"><i></i></span>
+        </label>
         <button type="button" id="ffaFullReset" style="width:100%;margin-bottom:8px">Réinitialiser les filtres</button>
         <div id="ffaFullMsg" class="msg" style="margin:2px 0 9px"></div>
         <div id="ffaFullResults" style="border:1px solid var(--line)"></div>
@@ -243,7 +259,10 @@ th{background:#141922}
             <p>Trouvez un athlète dans la base FFA et consultez son niveau.</p>
           </div>
         </div>
-        <input id="ffaAthleteSearch" type="search" placeholder="Nom et prénom..." autocomplete="off" style="width:100%;margin:0">
+        <div class="ffa-search-wrap">
+          <input id="ffaAthleteSearch" type="search" placeholder="Nom et prénom..." autocomplete="off" style="width:100%;margin:0">
+          <button type="button" id="ffaAthleteSearchClear" class="ffa-search-clear" aria-label="Effacer la recherche">×</button>
+        </div>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px">
           <button type="button" class="ffaRankModeBtn" data-mode="general" style="padding:9px 5px;font-size:12px">Général</button>
           <button type="button" class="ffaRankModeBtn" data-mode="sex" style="padding:9px 5px;font-size:12px">H/F</button>
@@ -595,10 +614,12 @@ async function renderFullFfaRanking(resetPage=false){
   const year=String($("ffaFullYear").value||"").trim();
   const minPb=parsePbLimit($("ffaFullMinPb").value);
   const maxPb=parsePbLimit($("ffaFullMaxPb").value);
+  const french=!!($("ffaFullFrench")&&$("ffaFullFrench").checked);
   const params=new URLSearchParams({distance:currentDistance,page:String(ffaFullPage+1),sort:ffaFullSort,dir:ffaFullSortDir});
   if(q) params.set("q",q);
   if(sex) params.set("sex",sex);
   if(cat) params.set("category",cat);
+  if(french) params.set("french","1");
   if(year) params.set("year",year);
   if(minPb!=null) params.set("minPb",String(minPb));
   if(maxPb!=null) params.set("maxPb",String(maxPb));
@@ -654,7 +675,7 @@ function scheduleFullFfaRanking(){
 ["ffaFullSearch","ffaFullYear","ffaFullMinPb","ffaFullMaxPb"].forEach(id=>{
   const el=$(id); if(el) el.addEventListener("input",scheduleFullFfaRanking);
 });
-["ffaFullSex","ffaFullCategory"].forEach(id=>{
+["ffaFullSex","ffaFullCategory","ffaFullFrench"].forEach(id=>{
   const el=$(id); if(el) el.addEventListener("change",()=>renderFullFfaRanking(true));
 });
 const _ffaFullReset=$("ffaFullReset");
@@ -665,6 +686,7 @@ if(_ffaFullReset) _ffaFullReset.addEventListener("click",()=>{
   $("ffaFullYear").value="";
   $("ffaFullMinPb").value="";
   $("ffaFullMaxPb").value="";
+  if($("ffaFullFrench")) $("ffaFullFrench").checked=false;
   ffaFullSort='rank';
   ffaFullSortDir='asc';
   renderFullFfaRanking(true);
@@ -673,10 +695,23 @@ const _ffaFullPrev=$("ffaFullPrev"); if(_ffaFullPrev) _ffaFullPrev.addEventListe
 const _ffaFullNext=$("ffaFullNext"); if(_ffaFullNext) _ffaFullNext.addEventListener("click",()=>{ffaFullPage++;renderFullFfaRanking(false);});
 const _ffaAthleteSearch=$("ffaAthleteSearch");
 if(_ffaAthleteSearch){
+  const clearBtn=$("ffaAthleteSearchClear");
+  const syncClear=()=>{ if(clearBtn) clearBtn.classList.toggle("show",!!_ffaAthleteSearch.value); };
   _ffaAthleteSearch.addEventListener("input",()=>{
+    syncClear();
     clearTimeout(ffaAthleteSearchTimer);
     ffaAthleteSearchTimer=setTimeout(renderFfaAthleteSearch,220);
   });
+  if(clearBtn) clearBtn.addEventListener("click",()=>{
+    clearTimeout(ffaAthleteSearchTimer);
+    _ffaAthleteSearch.value="";
+    syncClear();
+    const box=$("ffaAthleteSearchResults"), msg=$("ffaAthleteSearchMsg");
+    if(box){ box.innerHTML=""; box.style.display="none"; }
+    if(msg) msg.textContent="";
+    _ffaAthleteSearch.focus();
+  });
+  syncClear();
 }
 
 function sortRows(rows){

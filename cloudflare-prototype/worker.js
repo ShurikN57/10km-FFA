@@ -154,6 +154,7 @@ export default {
       const minPb = Number(url.searchParams.get('minPb') || 0);
       const maxPb = Number(url.searchParams.get('maxPb') || 0);
       const q = normalizeName(url.searchParams.get('q'));
+      const frenchOnly = url.searchParams.get('french') === '1';
       const ftsQuery = q.length >= 3 ? ftsQueryFromName(q) : '';
       const page = Math.max(1, Number(url.searchParams.get('page') || 1));
       const pageSize = 100;
@@ -162,7 +163,7 @@ export default {
       const sort = ['rank','name','time'].includes(sortRaw) ? sortRaw : 'rank';
       const dir = String(url.searchParams.get('dir') || 'asc').toLowerCase() === 'desc' ? 'DESC' : 'ASC';
 
-      const plainGeneral = !sex && !category && !year && !q &&
+      const plainGeneral = !sex && !category && !year && !q && !frenchOnly &&
         !(Number.isFinite(minPb) && minPb > 0) &&
         !(Number.isFinite(maxPb) && maxPb > 0);
 
@@ -196,6 +197,7 @@ export default {
 
       const where = ['a.distance = ?'];
       const binds = [distance];
+      if (frenchOnly) where.push("a.full_name NOT GLOB '* ([A-Z][A-Z][A-Z])'");
       if (sex) { where.push('a.sex = ?'); binds.push(sex); }
       if (category) {
         const bounds = categoryYears(category);
