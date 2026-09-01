@@ -347,7 +347,11 @@ const FFA_DISTANCES={
   "semi":{label:"Semi-marathon",file:"./ffa_semi_2024_2026.json.gz",export:"comparaison_ffa_semi.csv",minPb:"PB min, ex 1:05:00",maxPb:"PB max, ex 1:30:00"},
   "marathon":{label:"Marathon",file:"./ffa_marathon_2024_2026.json.gz",export:"comparaison_ffa_marathon.csv",minPb:"PB min, ex 2:15:00",maxPb:"PB max, ex 3:30:00"}
 };
-let currentDistance=localStorage.getItem("comparateur_ffa_distance");
+const requestedDistance=new URLSearchParams(location.search).get("distance");
+const standaloneMode=window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone===true;
+let currentDistance=FFA_DISTANCES[requestedDistance]
+  ? requestedDistance
+  : (standaloneMode ? localStorage.getItem("comparateur_ffa_distance") : "10k");
 if(!FFA_DISTANCES[currentDistance]) currentDistance="10k";
 let ffaLoadToken=0;
 
@@ -905,10 +909,13 @@ function ensureFfaLoaded(){
 document.querySelectorAll("[data-distance]").forEach(btn=>btn.addEventListener("click",()=>{
   const d=btn.getAttribute("data-distance");
   if(d===currentDistance || !FFA_DISTANCES[d]) return;
+  const distanceUrl=new URL(location.href);
+  distanceUrl.searchParams.set("distance",d);
   const localBaseInMemory=ffaReady || !!ffaLoadPromise;
   if((activeAppTab==="recherche" || activeAppTab==="classement") && !localBaseInMemory){
     currentDistance=d;
     try{ localStorage.setItem("comparateur_ffa_distance",d); }catch(e){}
+    try{ history.replaceState(null,"",distanceUrl.href); }catch(e){}
     updateDistanceUi();
     refreshRestoreButton();
     if(activeAppTab==="classement") renderFullFfaRanking(true); else renderFfaAthleteSearch();
@@ -918,7 +925,7 @@ document.querySelectorAll("[data-distance]").forEach(btn=>btn.addEventListener("
   // un rechargement garantit sa libération complète par Safari/iOS.
   saveDistanceReloadUi();
   try{ localStorage.setItem("comparateur_ffa_distance",d); }catch(e){}
-  location.reload();
+  location.replace(distanceUrl.href);
 }));
 restoreDistanceReloadUi();
 updateDistanceUi();
