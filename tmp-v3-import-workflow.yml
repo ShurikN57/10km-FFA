@@ -1,0 +1,362 @@
+name: Import validated V3 FFA bases into D1
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ffa_5km_2024_2026.json.gz'
+      - 'ffa_base.json.gz'
+      - 'ffa_semi_2024_2026.json.gz'
+      - 'ffa_marathon_2024_2026.json.gz'
+      - '.github/workflows/tmp-import-v3-d1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ffa-d1-import
+  cancel-in-progress: false
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate compact bases and prepare staging SQL
+        shell: python
+        run: |
+          import gzip, json, re, unicodedata
+          from pathlib import Path
+
+          root = Path.cwd()
+          out = Path('/tmp/ffa_v3_sql')
+          out.mkdir(exist_ok=True)
+          sources = [
+            ('5k', root/'ffa_5km_2024_2026.json.gz', '5 km', 124626),
+            ('10k', root/'ffa_base.json.gz', '10 km', 533085),
+            ('semi', root/'ffa_semi_2024_2026.json.gz', 'Semi-marathon', 490879),
+            ('marathon', root/'ffa_marathon_2024_2026.json.gz', 'Marathon', 288475),
+          ]
+          schema = ['full_name','birth_year','sex','pb_sec','pb_course','pb_date','club','athlete_ffa_id']
+          expected = {distance: count for distance, _, _, count in sources}
+
+          def norm(value):
+            value = unicodedata.normalize('NFD', str(value or ''))
+            value = ''.join(c for c in value if unicodedata.category(c) != 'Mn').upper()
+            return re.sub(r'\s+', ' ', re.sub(r'[^A-Z0-9]+', ' ', value)).strip()
+
+          def q(value):
+            if value in (None, ''):
+              return 'NULL'
+            return "'" + str(value).replace("'", "''") + "'"
+
+          def integer(value):
+            if value in (None, ''):
+              return 'NULL'
+            return str(int(value))
+
+          create = '''
+          DROP TABLE IF EXISTS athlete_fts_next;
+          DROP TABLE IF EXISTS athlete_french_rank_next;
+          DROP TABLE IF EXISTS ffa_french_stats_next;
+          DROP TABLE IF EXISTS athlete_general_rank_next;
+          DROP TABLE IF EXISTS athlete_search_rank_next;
+          DROP TABLE IF EXISTS athlete_rank_year_next;
+          DROP TABLE IF EXISTS athlete_rank_cat_before_next;
+          DROP TABLE IF EXISTS athlete_rank_cat_after_next;
+          DROP TABLE IF EXISTS ffa_distance_stats_next;
+          DROP TABLE IF EXISTS athletes_next;
+
+          CREATE TABLE athletes_next (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            distance TEXT NOT NULL,
+            full_name TEXT NOT NULL,
+            name_key TEXT NOT NULL,
+            birth_year INTEGER,
+            sex TEXT,
+            pb_sec INTEGER NOT NULL,
+            pb_course TEXT,
+            pb_date TEXT,
+            club TEXT,
+            athlete_ffa_id TEXT
+          );
+          '''
+          (out/'0000_create.sql').write_text(create, encoding='utf-8')
+
+          chunk = []
+          chunk_no = 0
+          counts = {}
+          file_chunk_size = 20000
+          statement_size = 100
+
+          def flush():
+            global chunk, chunk_no
+            if not chunk:
+              return
+            chunk_no += 1
+            statements = []
+            for pos in range(0, len(chunk), statement_size):
+              rows = chunk[pos:pos+statement_size]
+              statements.append(
+                'INSERT INTO athletes_next(distance,full_name,name_key,birth_year,sex,pb_sec,pb_course,pb_date,club,athlete_ffa_id) VALUES\n'
+                + ',\n'.join(rows) + ';'
+              )
+            (out/f'{chunk_no:04d}_rows.sql').write_text('\n'.join(statements)+'\n', encoding='utf-8')
+            chunk = []
+
+          seen_ids = {distance: set() for distance, _, _, _ in sources}
+          for distance, path, label, expected_count in sources:
+            if not path.exists():
+              raise SystemExit(f'Fichier manquant: {path.name}')
+            with gzip.open(path, 'rt', encoding='utf-8') as stream:
+              data = json.load(stream)
+            if data.get('schema') != schema:
+              raise SystemExit(f'{path.name}: schéma inattendu')
+            if data.get('distance') != label:
+              raise SystemExit(f'{path.name}: distance inattendue {data.get("distance")!r}')
+            if data.get('accepted_500_page_cap') is not True:
+              raise SystemExit(f'{path.name}: limite de 500 pages non confirmée')
+            rows = data.get('rows')
+            if not isinstance(rows, list) or len(rows) != expected_count:
+              raise SystemExit(f'{path.name}: {len(rows) if isinstance(rows,list) else 0} lignes au lieu de {expected_count}')
+            for index, row in enumerate(rows):
+              if not isinstance(row, list) or len(row) != 8:
+                raise SystemExit(f'{path.name}: ligne {index} invalide')
+              full_name = str(row[0] or '').strip()
+              sex = str(row[2] or '').strip().upper()
+              pb_sec = int(row[3])
+              birth = None if row[1] in (None, '') else int(row[1])
+              athlete_id = None if row[7] in (None, '') else str(row[7]).strip()
+              if not full_name or sex not in ('M','F') or pb_sec <= 0:
+                raise SystemExit(f'{path.name}: valeurs invalides à la ligne {index}')
+              if birth is not None and not 1900 <= birth <= 2026:
+                raise SystemExit(f'{path.name}: année invalide à la ligne {index}')
+              if athlete_id is not None:
+                if not athlete_id.isdigit() or athlete_id in seen_ids[distance]:
+                  raise SystemExit(f'{path.name}: ID invalide ou dupliqué à la ligne {index}')
+                seen_ids[distance].add(athlete_id)
+              values = [
+                q(distance), q(full_name), q(norm(full_name)), integer(birth), q(sex),
+                str(pb_sec), q(str(row[4] or '').strip()), q(str(row[5] or '').strip()),
+                q(str(row[6] or '').strip()), q(athlete_id),
+              ]
+              chunk.append('(' + ','.join(values) + ')')
+              if len(chunk) >= file_chunk_size:
+                flush()
+            counts[distance] = len(rows)
+            print(f'{distance}: {len(rows):,} profils, {len(seen_ids[distance]):,} ID FFA')
+          flush()
+          if counts != expected:
+            raise SystemExit(f'Volumes inattendus: {counts}')
+          print(f'Total: {sum(counts.values()):,}; fichiers SQL: {chunk_no}')
+
+      - name: Create staging tables
+        run: npx --yes wrangler@latest d1 execute ffa-comparateur --remote --file=/tmp/ffa_v3_sql/0000_create.sql --config=cloudflare-prototype/wrangler.toml --yes
+
+      - name: Import athlete rows into staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          total=$(find /tmp/ffa_v3_sql -name '*_rows.sql' | wc -l)
+          current=0
+          for file in /tmp/ffa_v3_sql/*_rows.sql; do
+            current=$((current+1))
+            echo "Import $current/$total: $(basename "$file")"
+            npx --yes wrangler@latest d1 execute ffa-comparateur --remote --file="$file" --config=cloudflare-prototype/wrangler.toml --yes
+          done
+
+      - name: Create staging indexes and ranking tables
+        shell: bash
+        run: |
+          cat > /tmp/ffa_v3_schema.sql <<'SQL'
+          CREATE INDEX idx_athletes_next_distance_pb ON athletes_next(distance,pb_sec);
+          CREATE INDEX idx_athletes_next_distance_name ON athletes_next(distance,name_key);
+          CREATE INDEX idx_athletes_next_distance_fullname ON athletes_next(distance,full_name);
+          CREATE INDEX idx_athletes_next_distance_sex_pb ON athletes_next(distance,sex,pb_sec);
+          CREATE INDEX idx_athletes_next_distance_birth_pb ON athletes_next(distance,birth_year,pb_sec);
+          CREATE INDEX idx_athletes_next_distance_sex_birth_pb ON athletes_next(distance,sex,birth_year,pb_sec);
+
+          CREATE TABLE athlete_general_rank_next (
+            athlete_id INTEGER PRIMARY KEY,
+            distance TEXT NOT NULL,
+            rank INTEGER NOT NULL,
+            display_order INTEGER NOT NULL
+          );
+          CREATE TABLE athlete_search_rank_next (
+            athlete_id INTEGER PRIMARY KEY,
+            rank_general INTEGER NOT NULL,
+            rank_sex INTEGER,
+            rank_cat_before_sep INTEGER,
+            rank_cat_after_sep INTEGER
+          );
+          CREATE TABLE athlete_rank_year_next (
+            athlete_id INTEGER PRIMARY KEY,
+            rank_year INTEGER,
+            rank_sex_year INTEGER
+          );
+          CREATE TABLE athlete_rank_cat_before_next (
+            athlete_id INTEGER PRIMARY KEY,
+            rank_category INTEGER
+          );
+          CREATE TABLE athlete_rank_cat_after_next (
+            athlete_id INTEGER PRIMARY KEY,
+            rank_category INTEGER
+          );
+          CREATE TABLE athlete_french_rank_next (
+            athlete_id INTEGER PRIMARY KEY,
+            distance TEXT NOT NULL,
+            rank_general INTEGER NOT NULL
+          );
+          CREATE TABLE ffa_distance_stats_next (
+            distance TEXT PRIMARY KEY,
+            total INTEGER NOT NULL
+          );
+          CREATE TABLE ffa_french_stats_next (
+            distance TEXT PRIMARY KEY,
+            total INTEGER NOT NULL
+          );
+          CREATE VIRTUAL TABLE athlete_fts_next USING fts5(name_key,distance UNINDEXED,tokenize='trigram');
+          SQL
+          npx --yes wrangler@latest d1 execute ffa-comparateur --remote --file=/tmp/ffa_v3_schema.sql --config=cloudflare-prototype/wrangler.toml --yes
+
+      - name: Build staging ranks and search index
+        shell: bash
+        run: |
+          set -euo pipefail
+          before="CASE WHEN birth_year BETWEEN 2009 AND 2010 THEN 'CA' WHEN birth_year BETWEEN 2007 AND 2008 THEN 'JU' WHEN birth_year BETWEEN 2004 AND 2006 THEN 'ES' WHEN birth_year BETWEEN 1992 AND 2003 THEN 'SE' WHEN birth_year BETWEEN 1987 AND 1991 THEN 'M0' WHEN birth_year BETWEEN 1982 AND 1986 THEN 'M1' WHEN birth_year BETWEEN 1977 AND 1981 THEN 'M2' WHEN birth_year BETWEEN 1972 AND 1976 THEN 'M3' WHEN birth_year BETWEEN 1967 AND 1971 THEN 'M4' WHEN birth_year BETWEEN 1962 AND 1966 THEN 'M5' WHEN birth_year BETWEEN 1957 AND 1961 THEN 'M6' WHEN birth_year BETWEEN 1952 AND 1956 THEN 'M7' WHEN birth_year BETWEEN 1947 AND 1951 THEN 'M8' WHEN birth_year BETWEEN 1942 AND 1946 THEN 'M9' WHEN birth_year<=1941 THEN 'M10' END"
+          after="CASE WHEN birth_year BETWEEN 2010 AND 2011 THEN 'CA' WHEN birth_year BETWEEN 2008 AND 2009 THEN 'JU' WHEN birth_year BETWEEN 2005 AND 2007 THEN 'ES' WHEN birth_year BETWEEN 1993 AND 2004 THEN 'SE' WHEN birth_year BETWEEN 1988 AND 1992 THEN 'M0' WHEN birth_year BETWEEN 1983 AND 1987 THEN 'M1' WHEN birth_year BETWEEN 1978 AND 1982 THEN 'M2' WHEN birth_year BETWEEN 1973 AND 1977 THEN 'M3' WHEN birth_year BETWEEN 1968 AND 1972 THEN 'M4' WHEN birth_year BETWEEN 1963 AND 1967 THEN 'M5' WHEN birth_year BETWEEN 1958 AND 1962 THEN 'M6' WHEN birth_year BETWEEN 1953 AND 1957 THEN 'M7' WHEN birth_year BETWEEN 1948 AND 1952 THEN 'M8' WHEN birth_year BETWEEN 1943 AND 1947 THEN 'M9' WHEN birth_year<=1942 THEN 'M10' END"
+          for distance in 5k 10k semi marathon; do
+            echo "Build derived data: $distance"
+            sed -e "s/__DISTANCE__/$distance/g" -e "s/__BEFORE__/$before/g" -e "s/__AFTER__/$after/g" > "/tmp/ranks-$distance.sql" <<'SQL'
+          INSERT INTO athlete_general_rank_next(athlete_id,distance,rank,display_order)
+          SELECT id,distance,RANK() OVER (ORDER BY pb_sec),ROW_NUMBER() OVER (ORDER BY pb_sec,full_name,id)
+          FROM athletes_next WHERE distance='__DISTANCE__';
+
+          WITH b AS (
+            SELECT id,sex,pb_sec,__BEFORE__ AS cb,__AFTER__ AS ca
+            FROM athletes_next WHERE distance='__DISTANCE__'
+          ), r AS (
+            SELECT id,
+              RANK() OVER (ORDER BY pb_sec) AS rg,
+              CASE WHEN sex IN ('M','F') THEN RANK() OVER (PARTITION BY sex ORDER BY pb_sec) END AS rs,
+              CASE WHEN cb IS NOT NULL AND sex IN ('M','F') THEN RANK() OVER (PARTITION BY sex,cb ORDER BY pb_sec) END AS rcb,
+              CASE WHEN ca IS NOT NULL AND sex IN ('M','F') THEN RANK() OVER (PARTITION BY sex,ca ORDER BY pb_sec) END AS rca
+            FROM b
+          )
+          INSERT INTO athlete_search_rank_next(athlete_id,rank_general,rank_sex,rank_cat_before_sep,rank_cat_after_sep)
+          SELECT id,rg,rs,rcb,rca FROM r;
+
+          INSERT INTO athlete_rank_year_next(athlete_id,rank_year,rank_sex_year)
+          SELECT id,RANK() OVER (PARTITION BY birth_year ORDER BY pb_sec),
+            CASE WHEN sex IN ('M','F') THEN RANK() OVER (PARTITION BY sex,birth_year ORDER BY pb_sec) END
+          FROM athletes_next WHERE distance='__DISTANCE__';
+
+          WITH b AS (
+            SELECT id,pb_sec,__BEFORE__ AS cat
+            FROM athletes_next WHERE distance='__DISTANCE__'
+          ), r AS (
+            SELECT id,RANK() OVER (PARTITION BY cat ORDER BY pb_sec) AS rk FROM b WHERE cat IS NOT NULL
+          )
+          INSERT INTO athlete_rank_cat_before_next(athlete_id,rank_category) SELECT id,rk FROM r;
+
+          WITH b AS (
+            SELECT id,pb_sec,__AFTER__ AS cat
+            FROM athletes_next WHERE distance='__DISTANCE__'
+          ), r AS (
+            SELECT id,RANK() OVER (PARTITION BY cat ORDER BY pb_sec) AS rk FROM b WHERE cat IS NOT NULL
+          )
+          INSERT INTO athlete_rank_cat_after_next(athlete_id,rank_category) SELECT id,rk FROM r;
+
+          INSERT INTO athlete_french_rank_next(athlete_id,distance,rank_general)
+          SELECT r.athlete_id,r.distance,r.rank
+          FROM athlete_general_rank_next r JOIN athletes_next a ON a.id=r.athlete_id
+          WHERE r.distance='__DISTANCE__' AND a.full_name NOT GLOB '* ([A-Z][A-Z][A-Z])';
+
+          INSERT INTO athlete_fts_next(rowid,name_key,distance)
+          SELECT id,name_key,distance FROM athletes_next WHERE distance='__DISTANCE__';
+          SQL
+            npx --yes wrangler@latest d1 execute ffa-comparateur --remote --file="/tmp/ranks-$distance.sql" --config=cloudflare-prototype/wrangler.toml --yes
+          done
+
+      - name: Finalize staging indexes and statistics
+        shell: bash
+        run: |
+          cat > /tmp/ffa_v3_finalize.sql <<'SQL'
+          CREATE INDEX idx_general_rank_next_distance_rank ON athlete_general_rank_next(distance,rank,athlete_id);
+          CREATE INDEX idx_general_rank_next_distance_display ON athlete_general_rank_next(distance,display_order,athlete_id);
+          CREATE INDEX idx_search_rank_next_general ON athlete_search_rank_next(rank_general,athlete_id);
+          CREATE INDEX idx_search_rank_next_sex ON athlete_search_rank_next(rank_sex,athlete_id);
+          CREATE INDEX idx_search_rank_next_cat_before ON athlete_search_rank_next(rank_cat_before_sep,athlete_id);
+          CREATE INDEX idx_search_rank_next_cat_after ON athlete_search_rank_next(rank_cat_after_sep,athlete_id);
+          CREATE INDEX idx_rank_year_next_year ON athlete_rank_year_next(rank_year,athlete_id);
+          CREATE INDEX idx_rank_year_next_sex_year ON athlete_rank_year_next(rank_sex_year,athlete_id);
+          CREATE INDEX idx_rank_cat_before_next ON athlete_rank_cat_before_next(rank_category,athlete_id);
+          CREATE INDEX idx_rank_cat_after_next ON athlete_rank_cat_after_next(rank_category,athlete_id);
+          CREATE INDEX idx_french_rank_next_distance_rank ON athlete_french_rank_next(distance,rank_general,athlete_id);
+
+          INSERT INTO ffa_distance_stats_next(distance,total)
+          SELECT distance,COUNT(*) FROM athletes_next GROUP BY distance;
+          INSERT INTO ffa_french_stats_next(distance,total)
+          SELECT distance,COUNT(*) FROM athlete_french_rank_next GROUP BY distance;
+          SQL
+          npx --yes wrangler@latest d1 execute ffa-comparateur --remote --file=/tmp/ffa_v3_finalize.sql --config=cloudflare-prototype/wrangler.toml --yes
+
+      - name: Verify staging volumes before swap
+        shell: bash
+        run: |
+          set -euo pipefail
+          result=$(npx --yes wrangler@latest d1 execute ffa-comparateur --remote --command="SELECT SUM(distance='5k') AS n5,SUM(distance='10k') AS n10,SUM(distance='semi') AS ns,SUM(distance='marathon') AS nm,COUNT(*) AS total FROM athletes_next;" --config=cloudflare-prototype/wrangler.toml --yes --json)
+          echo "$result" | jq '.[0].results[0]'
+          echo "$result" | jq -e '.[0].results[0] | .n5==124626 and .n10==533085 and .ns==490879 and .nm==288475 and .total==1437065'
+          derived=$(npx --yes wrangler@latest d1 execute ffa-comparateur --remote --command="SELECT (SELECT COUNT(*) FROM athlete_general_rank_next) AS general_count,(SELECT COUNT(*) FROM athlete_search_rank_next) AS search_count,(SELECT COUNT(*) FROM athlete_rank_year_next) AS year_count,(SELECT COUNT(*) FROM athlete_fts_next) AS fts_count;" --config=cloudflare-prototype/wrangler.toml --yes --json)
+          echo "$derived" | jq '.[0].results[0]'
+          echo "$derived" | jq -e '.[0].results[0] | .general_count==1437065 and .search_count==1437065 and .year_count==1437065 and .fts_count==1437065'
+
+      - name: Atomically replace production tables
+        shell: bash
+        run: |
+          cat > /tmp/ffa_v3_swap.sql <<'SQL'
+          DROP TABLE athlete_fts;
+          DROP TABLE athlete_french_rank;
+          DROP TABLE ffa_french_stats;
+          DROP TABLE athlete_general_rank;
+          DROP TABLE athlete_search_rank;
+          DROP TABLE athlete_rank_year;
+          DROP TABLE athlete_rank_cat_before;
+          DROP TABLE athlete_rank_cat_after;
+          DROP TABLE ffa_distance_stats;
+          DROP TABLE athletes;
+
+          ALTER TABLE athletes_next RENAME TO athletes;
+          ALTER TABLE athlete_general_rank_next RENAME TO athlete_general_rank;
+          ALTER TABLE athlete_search_rank_next RENAME TO athlete_search_rank;
+          ALTER TABLE athlete_rank_year_next RENAME TO athlete_rank_year;
+          ALTER TABLE athlete_rank_cat_before_next RENAME TO athlete_rank_cat_before;
+          ALTER TABLE athlete_rank_cat_after_next RENAME TO athlete_rank_cat_after;
+          ALTER TABLE athlete_french_rank_next RENAME TO athlete_french_rank;
+          ALTER TABLE ffa_distance_stats_next RENAME TO ffa_distance_stats;
+          ALTER TABLE ffa_french_stats_next RENAME TO ffa_french_stats;
+          ALTER TABLE athlete_fts_next RENAME TO athlete_fts;
+          SQL
+          npx --yes wrangler@latest d1 execute ffa-comparateur --remote --file=/tmp/ffa_v3_swap.sql --config=cloudflare-prototype/wrangler.toml --yes
+
+      - name: Verify production D1 and API
+        shell: bash
+        run: |
+          set -euo pipefail
+          result=$(npx --yes wrangler@latest d1 execute ffa-comparateur --remote --command="SELECT SUM(distance='5k') AS n5,SUM(distance='10k') AS n10,SUM(distance='semi') AS ns,SUM(distance='marathon') AS nm,COUNT(*) AS total FROM athletes;" --config=cloudflare-prototype/wrangler.toml --yes --json)
+          echo "$result" | jq '.[0].results[0]'
+          echo "$result" | jq -e '.[0].results[0] | .n5==124626 and .n10==533085 and .ns==490879 and .nm==288475 and .total==1437065'
+          curl -fsS 'https://ffa-comparateur-api.57compte2.workers.dev/health'
+          echo
+          for distance in 5k 10k semi marathon; do
+            payload=$(curl -fsS "https://ffa-comparateur-api.57compte2.workers.dev/ranking?distance=$distance&page=1")
+            echo "$payload" | jq -e '.rows | length > 0' >/dev/null
+            echo "$distance: $(echo "$payload" | jq -r '.total') profils"
+          done

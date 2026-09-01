@@ -1,0 +1,53 @@
+name: Publish validated V3 FFA bases
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tmp-v3-payload/**'
+      - 'tmp-v3-import-workflow.yml'
+      - '.github/workflows/tmp-publish-v3-bases.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reassemble and verify the four gzip bases
+        shell: bash
+        run: |
+          set -euo pipefail
+          declare -A hashes=(
+            [ffa_5km_2024_2026.json.gz]=5f3a7356e3e29b1d185cdeb6fe36022cd54bc6733dbd6cf2b2f1f9af12f026e6
+            [ffa_base.json.gz]=ecccc949769b093cc805a4515758c8460a0dea6034836c0f4cef56e1f24570ac
+            [ffa_semi_2024_2026.json.gz]=cb29a500de0768824eef4551a7008f8be5b25022ffe1686a03ff75801445040d
+            [ffa_marathon_2024_2026.json.gz]=0ac968a213e6acfad6698248f0cb7e398f5b686ff529da681c54e26f330b6a60
+          )
+          for target in ffa_5km_2024_2026.json.gz ffa_base.json.gz ffa_semi_2024_2026.json.gz ffa_marathon_2024_2026.json.gz; do
+            rebuilt="$target.new"
+            : > "$rebuilt"
+            for part in tmp-v3-payload/"$target".part.*; do
+              cat "$part" >> "$rebuilt"
+            done
+            echo "${hashes[$target]}  $rebuilt" | sha256sum -c -
+            gzip -t "$rebuilt"
+            mv "$rebuilt" "$target"
+          done
+
+      - name: Publish bases and hand over to the D1 import workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mv tmp-v3-import-workflow.yml .github/workflows/tmp-import-v3-d1.yml
+          git add ffa_5km_2024_2026.json.gz ffa_base.json.gz ffa_semi_2024_2026.json.gz ffa_marathon_2024_2026.json.gz .github/workflows/tmp-import-v3-d1.yml
+          git rm -r tmp-v3-payload .github/workflows/tmp-publish-v3-bases.yml
+          git commit -m "Publish validated FFA V3 compact bases"
+          git push
