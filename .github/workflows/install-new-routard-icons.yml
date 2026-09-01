@@ -1,0 +1,28 @@
+name: Install validated Routard icons
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify current icon references
+        run: |
+          grep -F '<link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">' mobile.html
+          grep -F '<link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">' index.html
+      - name: Download validated icon package from workflow artifact source
+        run: |
+          echo 'Temporary workflow scaffold only; assets will be committed with Git data API.'
+      - name: Self remove workflow
+        run: |
+          rm -f .github/workflows/install-new-routard-icons.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Remove temporary Routard icon workflow' || exit 0
+          git push
