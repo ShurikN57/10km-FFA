@@ -1,6 +1,6 @@
 {
-  "name": "Le Routard",
-  "short_name": "Le Routard",
+  "name": "Runners",
+  "short_name": "Runners",
   "start_url": "./mobile.html",
   "display": "standalone",
   "background_color": "#0f1115",
