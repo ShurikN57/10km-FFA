@@ -142,6 +142,18 @@ export default {
       return json(request, { rows });
     }
 
+    if (url.pathname === '/ranking-options') {
+      const distance = normalizeDistance(url.searchParams.get('distance'));
+      if (!distance) return json(request, { error: 'invalid_distance' }, 400);
+      const res = await env.DB.prepare(`
+        SELECT league,department,club,race_year
+        FROM ffa_scope_options
+        WHERE distance = ?
+        ORDER BY league,department,club,race_year
+      `).bind(distance).all();
+      return json(request, { rows: res.results || [] });
+    }
+
     if (url.pathname === '/ranking') {
       const distance = normalizeDistance(url.searchParams.get('distance'));
       if (!distance) return json(request, { error: 'invalid_distance' }, 400);
@@ -151,6 +163,13 @@ export default {
       const category = String(url.searchParams.get('category') || '').toUpperCase();
       const yearRaw = String(url.searchParams.get('year') || '').trim();
       const year = /^\d{4}$/.test(yearRaw) ? Number(yearRaw) : 0;
+      const leagueRaw = String(url.searchParams.get('league') || '').trim().toUpperCase();
+      const league = /^[A-Z0-9-]{1,5}$/.test(leagueRaw) ? leagueRaw : '';
+      const departmentRaw = String(url.searchParams.get('department') || '').trim().toUpperCase();
+      const department = /^[A-Z0-9-]{1,5}$/.test(departmentRaw) ? departmentRaw : '';
+      const club = String(url.searchParams.get('club') || '').trim().slice(0, 180);
+      const raceYearRaw = String(url.searchParams.get('raceYear') || '').trim();
+      const raceYear = /^20\d{2}$/.test(raceYearRaw) ? Number(raceYearRaw) : 0;
       const minPb = Number(url.searchParams.get('minPb') || 0);
       const maxPb = Number(url.searchParams.get('maxPb') || 0);
       const q = normalizeName(url.searchParams.get('q'));
@@ -162,12 +181,13 @@ export default {
       const sortRaw = String(url.searchParams.get('sort') || 'rank').toLowerCase();
       const sort = ['rank','name','time'].includes(sortRaw) ? sortRaw : 'rank';
       const dir = String(url.searchParams.get('dir') || 'asc').toLowerCase() === 'desc' ? 'DESC' : 'ASC';
+      const scopedRanking = Boolean(league || department || club || raceYear);
 
-      const plainGeneral = !sex && !category && !year && !q && !frenchOnly &&
+      const plainGeneral = !scopedRanking && !sex && !category && !year && !q && !frenchOnly &&
         !(Number.isFinite(minPb) && minPb > 0) &&
         !(Number.isFinite(maxPb) && maxPb > 0);
 
-      const plainFrench = frenchOnly && !sex && !category && !year && !q &&
+      const plainFrench = !scopedRanking && frenchOnly && !sex && !category && !year && !q &&
         !(Number.isFinite(minPb) && minPb > 0) &&
         !(Number.isFinite(maxPb) && maxPb > 0);
 
@@ -225,6 +245,66 @@ export default {
           total,
           pages,
           rows: rowsRes?.results || []
+        });
+      }
+
+      if (scopedRanking) {
+        const needsScopeTable = Boolean(league || department || raceYear);
+        const scopeWhere = ['a.distance = ?'];
+        const scopeBinds = [distance];
+        if (sex) { scopeWhere.push('a.sex = ?'); scopeBinds.push(sex); }
+        if (category) {
+          const bounds = categoryYears(category);
+          if (!bounds) return json(request, { error: 'invalid_category' }, 400);
+          const [minYear, maxYear] = bounds;
+          if (minYear == null) { scopeWhere.push('a.birth_year <= ?'); scopeBinds.push(maxYear); }
+          else { scopeWhere.push('a.birth_year BETWEEN ? AND ?'); scopeBinds.push(minYear, maxYear); }
+        }
+        if (year) { scopeWhere.push('a.birth_year = ?'); scopeBinds.push(year); }
+        if (league) { scopeWhere.push('sc.league = ?'); scopeBinds.push(league); }
+        if (department) { scopeWhere.push('sc.department = ?'); scopeBinds.push(department); }
+        if (club) { scopeWhere.push('a.club = ?'); scopeBinds.push(club); }
+        if (raceYear) { scopeWhere.push('sc.race_year = ?'); scopeBinds.push(raceYear); }
+
+        const postWhere = [];
+        const postBinds = [];
+        if (frenchOnly) postWhere.push("full_name NOT GLOB '* ([A-Z][A-Z][A-Z])'");
+        if (Number.isFinite(minPb) && minPb > 0) { postWhere.push('pb_sec >= ?'); postBinds.push(minPb); }
+        if (Number.isFinite(maxPb) && maxPb > 0) { postWhere.push('pb_sec <= ?'); postBinds.push(maxPb); }
+        if (ftsQuery) { postWhere.push('id IN (SELECT rowid FROM athlete_fts WHERE athlete_fts MATCH ?)'); postBinds.push(ftsQuery); }
+        else if (q) { postWhere.push('name_key LIKE ?'); postBinds.push(`%${q}%`); }
+
+        const scopedOrder = sort === 'name'
+          ? `full_name ${dir}, pb_sec ASC, id ASC`
+          : sort === 'time'
+            ? `pb_sec ${dir}, full_name ASC, id ASC`
+            : `rank ${dir}, pb_sec ${dir}, full_name ASC, id ASC`;
+        const sql = `
+          WITH scoped AS (
+            SELECT a.id,a.full_name,a.name_key,a.birth_year,a.sex,a.pb_sec,a.pb_course,a.pb_date,a.club,a.athlete_ffa_id,
+                   RANK() OVER (ORDER BY a.pb_sec ASC) AS rank
+            FROM athletes a
+            ${needsScopeTable ? 'JOIN athlete_scope sc ON sc.athlete_id = a.id' : ''}
+            WHERE ${scopeWhere.join(' AND ')}
+          ), filtered AS (
+            SELECT * FROM scoped ${postWhere.length ? `WHERE ${postWhere.join(' AND ')}` : ''}
+          )
+          SELECT full_name,birth_year,sex,pb_sec,pb_course,pb_date,club,athlete_ffa_id,rank,
+                 COUNT(*) OVER () AS filtered_total
+          FROM filtered
+          ORDER BY ${scopedOrder}
+          LIMIT ? OFFSET ?`;
+        const res = await env.DB.prepare(sql).bind(...scopeBinds, ...postBinds, pageSize, offset).all();
+        const rawRows = res.results || [];
+        const total = Number(rawRows[0]?.filtered_total || 0);
+        const rows = rawRows.map(({ filtered_total, ...row }) => row);
+        const pages = Math.max(1, Math.ceil(total / pageSize));
+        return json(request, {
+          page: Math.min(page, pages),
+          pageSize,
+          total,
+          pages,
+          rows
         });
       }
 

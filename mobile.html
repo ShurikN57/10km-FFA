@@ -224,11 +224,19 @@ th{background:#141922}
         </div>
         <div class="rank-filter-grid rank-filter-grid-identity">
           <input id="ffaFullSearch" type="search" placeholder="Rechercher nom / prénom...">
-          <input id="ffaFullYear" inputmode="numeric" placeholder="Année">
+          <input id="ffaFullYear" inputmode="numeric" placeholder="Année naissance">
         </div>
         <div class="rank-filter-grid">
           <select id="ffaFullSex"><option value="">Tous sexes</option><option value="M">Hommes</option><option value="F">Femmes</option></select>
           <select id="ffaFullCategory"><option value="">Toutes catégories</option><option>CA</option><option>JU</option><option>ES</option><option>SE</option><option>M0</option><option>M1</option><option>M2</option><option>M3</option><option>M4</option><option>M5</option><option>M6</option><option>M7</option><option>M8</option><option>M9</option><option>M10</option></select>
+        </div>
+        <div class="rank-filter-grid">
+          <select id="ffaFullLeague"><option value="">Toutes régions</option></select>
+          <select id="ffaFullDepartment"><option value="">Tous départements</option></select>
+        </div>
+        <div class="rank-filter-grid rank-filter-grid-identity">
+          <select id="ffaFullClub"><option value="">Tous les clubs</option></select>
+          <select id="ffaFullRaceYear"><option value="">Année course</option></select>
         </div>
         <div class="rank-filter-grid rank-filter-grid-pb">
           <input id="ffaFullMinPb" inputmode="numeric" placeholder="PB min, ex 30:00">
@@ -366,7 +374,7 @@ function updateDistanceUi(){
 
 const DISTANCE_RELOAD_UI_KEY="comparateur_ffa_distance_reload_ui";
 function saveDistanceReloadUi(){
-  const ids=["ffaAthleteSearch","ffaFullSearch","ffaFullYear","ffaFullSex","ffaFullCategory","ffaFullMinPb","ffaFullMaxPb"];
+  const ids=["ffaAthleteSearch","ffaFullSearch","ffaFullYear","ffaFullSex","ffaFullCategory","ffaFullLeague","ffaFullDepartment","ffaFullClub","ffaFullRaceYear","ffaFullMinPb","ffaFullMaxPb"];
   const fields={};
   for(const id of ids){ const el=$(id); if(el) fields[id]=el.value; }
   try{ sessionStorage.setItem(DISTANCE_RELOAD_UI_KEY,JSON.stringify({tab:activeAppTab,fields})); }catch(e){}
@@ -597,6 +605,65 @@ let ffaRankingToken=0;
 let ffaFullTimer=null;
 let ffaFullSort='rank';
 let ffaFullSortDir='asc';
+let ffaScopeOptionsDistance='';
+let ffaScopeOptionRows=[];
+let ffaScopeOptionsToken=0;
+const FFA_LEAGUE_LABELS={
+  'ARA':'Auvergne-Rhône-Alpes','BFC':'Bourgogne-Franche-Comté','BRE':'Bretagne',
+  'CEN':'Centre-Val de Loire','COR':'Corse','G-E':'Grand Est','H-F':'Hauts-de-France',
+  'I-F':'Île-de-France','N-A':'Nouvelle-Aquitaine','NOR':'Normandie','OCC':'Occitanie',
+  'P-L':'Pays de la Loire','PCA':'Provence-Alpes-Côte d’Azur','GUA':'Guadeloupe',
+  'GUY':'Guyane','MAR':'Martinique','MAY':'Mayotte','N-C':'Nouvelle-Calédonie',
+  'P-F':'Polynésie française','REU':'La Réunion','W-F':'Wallis-et-Futuna'
+};
+function setFfaScopeSelect(id,values,placeholder,labeler){
+  const el=$(id); if(!el) return;
+  const current=String(el.value||'');
+  el.replaceChildren();
+  const empty=document.createElement('option'); empty.value=''; empty.textContent=placeholder; el.appendChild(empty);
+  values.forEach(value=>{
+    const option=document.createElement('option');
+    option.value=String(value); option.textContent=labeler?labeler(value):String(value);
+    el.appendChild(option);
+  });
+  el.value=values.some(value=>String(value)===current)?current:'';
+  el.disabled=false;
+}
+function populateFfaScopeOptions(){
+  if(ffaScopeOptionsDistance!==currentDistance) return;
+  const leagues=[...new Set(ffaScopeOptionRows.map(row=>String(row.league||'')).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'fr'));
+  setFfaScopeSelect('ffaFullLeague',leagues,'Toutes régions',value=>FFA_LEAGUE_LABELS[value]?value+' · '+FFA_LEAGUE_LABELS[value]:value);
+  const activeLeague=String($('ffaFullLeague')?.value||'');
+  const departments=[...new Set(ffaScopeOptionRows.filter(row=>!activeLeague||row.league===activeLeague).map(row=>String(row.department||'')).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'fr',{numeric:true}));
+  setFfaScopeSelect('ffaFullDepartment',departments,'Tous départements',value=>'Département '+value);
+  const activeDepartment=String($('ffaFullDepartment')?.value||'');
+  const clubs=[...new Set(ffaScopeOptionRows.filter(row=>(!activeLeague||row.league===activeLeague)&&(!activeDepartment||row.department===activeDepartment)).map(row=>String(row.club||'').trim()).filter(value=>value&&!/^NL la veille/i.test(value)))].sort((a,b)=>a.localeCompare(b,'fr'));
+  setFfaScopeSelect('ffaFullClub',clubs,'Tous les clubs');
+  const years=[...new Set(ffaScopeOptionRows.map(row=>Number(row.race_year)||0).filter(Boolean))].sort((a,b)=>b-a);
+  setFfaScopeSelect('ffaFullRaceYear',years,'Année course');
+}
+async function loadFfaScopeOptions(){
+  const distance=currentDistance;
+  if(ffaScopeOptionsDistance===distance&&ffaScopeOptionRows.length){ populateFfaScopeOptions(); return; }
+  const token=++ffaScopeOptionsToken;
+  ['ffaFullLeague','ffaFullDepartment','ffaFullClub','ffaFullRaceYear'].forEach(id=>{const el=$(id);if(el)el.disabled=true;});
+  try{
+    const response=await fetch(FFA_API+'/ranking-options?distance='+encodeURIComponent(distance),{cache:'no-store'});
+    if(!response.ok) throw new Error('HTTP '+response.status);
+    const data=await response.json();
+    if(token!==ffaScopeOptionsToken||distance!==currentDistance) return;
+    const firstLoadForDistance=ffaScopeOptionsDistance!==distance;
+    ffaScopeOptionsDistance=distance;
+    ffaScopeOptionRows=Array.isArray(data.rows)?data.rows:[];
+    const before=['ffaFullLeague','ffaFullDepartment','ffaFullClub','ffaFullRaceYear'].map(id=>String($(id)?.value||'')).join('|');
+    populateFfaScopeOptions();
+    const after=['ffaFullLeague','ffaFullDepartment','ffaFullClub','ffaFullRaceYear'].map(id=>String($(id)?.value||'')).join('|');
+    if((firstLoadForDistance||before!==after)&&activeAppTab==='classement') renderFullFfaRanking(true);
+  }catch(err){
+    if(token!==ffaScopeOptionsToken) return;
+    ['ffaFullLeague','ffaFullDepartment','ffaFullClub','ffaFullRaceYear'].forEach(id=>{const el=$(id);if(el)el.disabled=false;});
+  }
+}
 function ffaFullSortHeader(){
   const cols=[['rank','Position'],['name','Nom'],['time','Temps']];
   return `<div style="display:grid;grid-template-columns:68px minmax(0,1fr) 72px;gap:6px;align-items:center;padding:7px 10px;border-bottom:1px solid var(--line);background:#141922">${cols.map(([key,label])=>{
@@ -616,6 +683,7 @@ function bindFfaFullSortButtons(){
 }
 async function renderFullFfaRanking(resetPage=false){
   if(resetPage) ffaFullPage=0;
+  loadFfaScopeOptions();
   const box=$("ffaFullResults"), msg=$("ffaFullMsg");
   if(!box||!msg) return;
   const token=++ffaRankingToken;
@@ -623,6 +691,11 @@ async function renderFullFfaRanking(resetPage=false){
   const sex=$("ffaFullSex").value;
   const cat=$("ffaFullCategory").value;
   const year=String($("ffaFullYear").value||"").trim();
+  const scopeReady=ffaScopeOptionsDistance===currentDistance;
+  const league=scopeReady?String($("ffaFullLeague").value||""):"";
+  const department=scopeReady?String($("ffaFullDepartment").value||""):"";
+  const club=scopeReady?String($("ffaFullClub").value||""):"";
+  const raceYear=scopeReady?String($("ffaFullRaceYear").value||""):"";
   const minPb=parsePbLimit($("ffaFullMinPb").value);
   const maxPb=parsePbLimit($("ffaFullMaxPb").value);
   const french=!!($("ffaFullFrench")&&$("ffaFullFrench").checked);
@@ -630,6 +703,10 @@ async function renderFullFfaRanking(resetPage=false){
   if(q) params.set("q",q);
   if(sex) params.set("sex",sex);
   if(cat) params.set("category",cat);
+  if(league) params.set("league",league);
+  if(department) params.set("department",department);
+  if(club) params.set("club",club);
+  if(raceYear) params.set("raceYear",raceYear);
   if(french) params.set("french","1");
   if(year) params.set("year",year);
   if(minPb!=null) params.set("minPb",String(minPb));
@@ -686,15 +763,21 @@ function scheduleFullFfaRanking(){
 ["ffaFullSearch","ffaFullYear","ffaFullMinPb","ffaFullMaxPb"].forEach(id=>{
   const el=$(id); if(el) el.addEventListener("input",scheduleFullFfaRanking);
 });
-["ffaFullSex","ffaFullCategory","ffaFullFrench"].forEach(id=>{
+["ffaFullSex","ffaFullCategory","ffaFullClub","ffaFullRaceYear","ffaFullFrench"].forEach(id=>{
   const el=$(id); if(el) el.addEventListener("change",()=>renderFullFfaRanking(true));
 });
+const _ffaFullLeague=$("ffaFullLeague"); if(_ffaFullLeague) _ffaFullLeague.addEventListener("change",()=>{populateFfaScopeOptions();renderFullFfaRanking(true);});
+const _ffaFullDepartment=$("ffaFullDepartment"); if(_ffaFullDepartment) _ffaFullDepartment.addEventListener("change",()=>{populateFfaScopeOptions();renderFullFfaRanking(true);});
 const _ffaFullReset=$("ffaFullReset");
 if(_ffaFullReset) _ffaFullReset.addEventListener("click",()=>{
   $("ffaFullSearch").value="";
   $("ffaFullSex").value="";
   $("ffaFullCategory").value="";
   $("ffaFullYear").value="";
+  $("ffaFullLeague").value="";
+  $("ffaFullDepartment").value="";
+  $("ffaFullClub").value="";
+  $("ffaFullRaceYear").value="";
   $("ffaFullMinPb").value="";
   $("ffaFullMaxPb").value="";
   if($("ffaFullFrench")) $("ffaFullFrench").checked=false;
