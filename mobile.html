@@ -124,6 +124,11 @@ body{
 }
 .section-icon svg{width:28px;height:28px;stroke:currentColor}
 .section-copy{min-width:0}
+.ranking-section-copy{flex:1}
+.ranking-title-row{display:flex;align-items:center;gap:8px}
+.ranking-title-row h2{flex:1;min-width:0;white-space:nowrap}
+.ranking-title-reset{flex:0 0 auto;margin:-6px -4px -6px 0}
+.ranking-title-reset[hidden]{display:none}
 .section-copy h2{margin:0 0 4px;font-size:21px;letter-spacing:-.35px}
 .section-copy p{margin:0;color:var(--muted);font-size:13px;line-height:1.45}
 input[type=search],input:not([type]),select{
@@ -179,7 +184,9 @@ th{background:#141922}
 .rank-filter-grid select,.rank-filter-grid input{width:100%;min-width:0;height:46px;min-height:46px;margin:0;padding:9px;border-color:rgba(148,163,184,.16)!important}
 .rank-filter-grid select{font-size:14px!important;padding:9px 24px 9px 9px}
 .ranking-toolbar{display:flex;gap:7px;margin-bottom:10px;align-items:center}
+.ranking-search-wrap{position:relative;flex:1;min-width:0}
 .ranking-toolbar input{flex:1;width:auto;min-width:0;height:42px;min-height:42px;margin:0;padding:7px 10px;border-color:rgba(255,255,255,.15)!important;background:#1f2937!important}
+.ranking-toolbar .ranking-search-wrap #ffaFullSearch{width:100%;padding-right:42px!important}
 .ranking-quick-btn{height:42px;min-height:42px;padding:6px 10px;border:1px solid rgba(255,255,255,.15);background:#1f2937;font-size:13px;font-weight:800;white-space:nowrap}
 .ranking-toolbar .ranking-quick-btn{flex:0 0 112px;width:112px}
 .ranking-quick-btn.active{color:#fff;border-color:#3b82f6;background:#3b82f6}
@@ -242,13 +249,19 @@ th{background:#141922}
           <div class="section-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24"><path d="M8 4h8v4a4 4 0 0 1-8 0V4Z"/><path d="M8 6H5v1a4 4 0 0 0 4 4M16 6h3v1a4 4 0 0 1-4 4M12 12v5M9 20h6M10 17h4"/></svg>
           </div>
-          <div class="section-copy">
-            <h2>Classement FFA</h2>
+          <div class="section-copy ranking-section-copy">
+            <div class="ranking-title-row">
+              <h2>Classement FFA</h2>
+              <button type="button" id="ffaActiveFiltersReset" class="ffa-filter-link ranking-title-reset" hidden>Réinitialiser</button>
+            </div>
             <p>Consultez et filtrez le classement complet des <span id="rankingDistanceLabel">10 km</span>.</p>
           </div>
         </div>
         <div class="ranking-toolbar">
-          <input id="ffaFullSearch" type="search" placeholder="Nom, prénom...">
+          <div class="ranking-search-wrap">
+            <input id="ffaFullSearch" type="search" placeholder="Nom, prénom..." autocomplete="off">
+            <button type="button" id="ffaFullSearchClear" class="ffa-search-clear" aria-label="Effacer le nom">×</button>
+          </div>
           <button type="button" id="ffaFilterOpen" class="ranking-quick-btn" aria-expanded="false" aria-controls="ffaFiltersDrawer">⚙️ Filtres</button>
         </div>
         <div class="ranking-shortcuts">
@@ -722,6 +735,11 @@ function syncFfaFilterUi(){
     frenchButton.setAttribute('aria-pressed',french?'true':'false');
   }
   const count=ffaSecondaryFilterCount();
+  const activeFiltersReset=$('ffaActiveFiltersReset');
+  if(activeFiltersReset){
+    activeFiltersReset.hidden=count===0;
+    activeFiltersReset.setAttribute('aria-hidden',count?'false':'true');
+  }
   const filterButton=$('ffaFilterOpen');
   if(filterButton){
     filterButton.textContent='⚙️ Filtres'+(count?' ('+count+')':'');
@@ -842,6 +860,20 @@ function scheduleFullFfaRanking(){
 ["ffaFullSearch","ffaFullYear","ffaFullMinPb","ffaFullMaxPb"].forEach(id=>{
   const el=$(id); if(el) el.addEventListener("input",scheduleFullFfaRanking);
 });
+const _ffaFullSearch=$("ffaFullSearch");
+if(_ffaFullSearch){
+  const clearBtn=$("ffaFullSearchClear");
+  const syncClear=()=>{ if(clearBtn) clearBtn.classList.toggle("show",!!_ffaFullSearch.value); };
+  _ffaFullSearch.addEventListener("input",syncClear);
+  if(clearBtn) clearBtn.addEventListener("click",()=>{
+    clearTimeout(ffaFullTimer);
+    _ffaFullSearch.value="";
+    syncClear();
+    renderFullFfaRanking(true);
+    _ffaFullSearch.focus();
+  });
+  syncClear();
+}
 ["ffaFullCategory","ffaFullClub","ffaFullRaceYear"].forEach(id=>{
   const el=$(id); if(el) el.addEventListener("change",()=>{syncFfaFilterUi();renderFullFfaRanking(true);});
 });
@@ -862,8 +894,7 @@ const _ffaFilterOpen=$('ffaFilterOpen');
 if(_ffaFilterOpen) _ffaFilterOpen.addEventListener('click',()=>setFfaFilterDrawer(true));
 document.querySelectorAll('[data-ffa-filter-close]').forEach(button=>button.addEventListener('click',()=>setFfaFilterDrawer(false)));
 document.addEventListener('keydown',event=>{if(event.key==='Escape'&&$('ffaFiltersDrawer')?.classList.contains('show'))setFfaFilterDrawer(false);});
-const _ffaFullReset=$("ffaFullReset");
-if(_ffaFullReset) _ffaFullReset.addEventListener("click",()=>{
+function resetFfaSecondaryFilters(){
   $("ffaFullCategory").value="";
   $("ffaFullYear").value="";
   $("ffaFullLeague").value="";
@@ -875,6 +906,10 @@ if(_ffaFullReset) _ffaFullReset.addEventListener("click",()=>{
   populateFfaScopeOptions();
   syncFfaFilterUi();
   renderFullFfaRanking(true);
+}
+["ffaFullReset","ffaActiveFiltersReset"].forEach(id=>{
+  const button=$(id);
+  if(button) button.addEventListener("click",resetFfaSecondaryFilters);
 });
 const _ffaFullPrev=$("ffaFullPrev"); if(_ffaFullPrev) _ffaFullPrev.addEventListener("click",()=>{if(ffaFullPage>0){ffaFullPage--;renderFullFfaRanking(false);}});
 const _ffaFullNext=$("ffaFullNext"); if(_ffaFullNext) _ffaFullNext.addEventListener("click",()=>{ffaFullPage++;renderFullFfaRanking(false);});
