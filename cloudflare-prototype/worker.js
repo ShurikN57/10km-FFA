@@ -167,6 +167,10 @@ export default {
         !(Number.isFinite(minPb) && minPb > 0) &&
         !(Number.isFinite(maxPb) && maxPb > 0);
 
+      const plainFrench = frenchOnly && !sex && !category && !year && !q &&
+        !(Number.isFinite(minPb) && minPb > 0) &&
+        !(Number.isFinite(maxPb) && maxPb > 0);
+
       if (plainGeneral) {
         const generalOrder = sort === 'name'
           ? `a.full_name ${dir}, a.pb_sec ASC, a.id ASC`
@@ -183,6 +187,35 @@ export default {
             LIMIT ? OFFSET ?
           `).bind(distance, pageSize, offset),
           env.DB.prepare('SELECT total FROM ffa_distance_stats WHERE distance = ?').bind(distance)
+        ]);
+        const total = Number(statsRes?.results?.[0]?.total || 0);
+        const pages = Math.max(1, Math.ceil(total / pageSize));
+        return json(request, {
+          page: Math.min(page, pages),
+          pageSize,
+          total,
+          pages,
+          rows: rowsRes?.results || []
+        });
+      }
+
+      if (plainFrench) {
+        const frenchOrder = sort === 'name'
+          ? `a.full_name ${dir}, a.pb_sec ASC, a.id ASC`
+          : sort === 'time'
+            ? `a.pb_sec ${dir}, a.full_name ASC, a.id ASC`
+            : `fr.rank_general ${dir}, a.pb_sec ${dir}, a.full_name ASC, a.id ASC`;
+        const [rowsRes, statsRes] = await env.DB.batch([
+          env.DB.prepare(`
+            SELECT a.full_name,a.birth_year,a.sex,a.pb_sec,a.pb_course,a.pb_date,a.club,a.athlete_ffa_id,
+                   fr.rank_general AS rank
+            FROM athlete_french_rank fr
+            JOIN athletes a ON a.id = fr.athlete_id
+            WHERE fr.distance = ?
+            ORDER BY ${frenchOrder}
+            LIMIT ? OFFSET ?
+          `).bind(distance, pageSize, offset),
+          env.DB.prepare('SELECT total FROM ffa_french_stats WHERE distance = ?').bind(distance)
         ]);
         const total = Number(statsRes?.results?.[0]?.total || 0);
         const pages = Math.max(1, Math.ceil(total / pageSize));
