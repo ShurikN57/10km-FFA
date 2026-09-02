@@ -698,6 +698,7 @@ function parsePbLimit(v){
 }
 const FFA_TIME_ITEM_HEIGHT=48;
 const ffaTimePickerState={input:null,values:[0,0,0],built:false,timers:[null,null,null]};
+let ffaTimeFiltersDirty=false;
 function padFfaTime(value){ return String(value).padStart(2,"0"); }
 function formatFfaTime(hours,minutes,seconds){
   return hours>0 ? hours+":"+padFfaTime(minutes)+":"+padFfaTime(seconds) : padFfaTime(minutes)+":"+padFfaTime(seconds);
@@ -897,7 +898,13 @@ function setFfaFilterDrawer(open){
   if(open){
     const first=drawer.querySelector('[data-ffa-sex].active');
     if(first) setTimeout(()=>first.focus(),0);
-  }else if(button&&drawer.contains(document.activeElement)) button.focus();
+  }else{
+    if(button&&drawer.contains(document.activeElement)) button.focus();
+    if(ffaTimeFiltersDirty){
+      ffaTimeFiltersDirty=false;
+      renderFullFfaRanking(true);
+    }
+  }
 }
 function ffaFullSortHeader(){
   const cols=[['rank','Position'],['name','Nom'],['time','Temps']];
@@ -917,6 +924,7 @@ function bindFfaFullSortButtons(){
   }));
 }
 async function renderFullFfaRanking(resetPage=false){
+  ffaTimeFiltersDirty=false;
   if(resetPage) ffaFullPage=0;
   syncFfaFilterUi();
   loadFfaScopeOptions();
@@ -1047,18 +1055,21 @@ if(_ffaTimeValidate) _ffaTimeValidate.addEventListener("click",()=>{
   syncAllFfaTimeWheels();
   const input=ffaTimePickerState.input;
   if(input){
-    input.value=formatFfaTime(ffaTimePickerState.values[0],ffaTimePickerState.values[1],ffaTimePickerState.values[2]);
-    syncFfaFilterUi();
-    renderFullFfaRanking(true);
+    const nextValue=formatFfaTime(ffaTimePickerState.values[0],ffaTimePickerState.values[1],ffaTimePickerState.values[2]);
+    if(input.value!==nextValue){
+      input.value=nextValue;
+      ffaTimeFiltersDirty=true;
+      syncFfaFilterUi();
+    }
   }
   closeFfaTimePicker();
 });
 if(_ffaTimeClear) _ffaTimeClear.addEventListener("click",()=>{
   const input=ffaTimePickerState.input;
-  if(input){
+  if(input&&input.value){
     input.value="";
+    ffaTimeFiltersDirty=true;
     syncFfaFilterUi();
-    renderFullFfaRanking(true);
   }
   closeFfaTimePicker();
 });
