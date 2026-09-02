@@ -4,7 +4,7 @@ function corsHeaders(request) {
   const origin = request.headers.get('Origin');
   return {
     'Access-Control-Allow-Origin': origin === ALLOWED_ORIGIN ? origin : ALLOWED_ORIGIN,
-    'Access-Control-Allow-Methods': 'GET,OPTIONS',
+    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
     'Vary': 'Origin',
     'Cache-Control': 'no-store'
@@ -99,9 +99,38 @@ function categoryYears(category) {
 export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') return new Response(null, { headers: corsHeaders(request) });
-    if (request.method !== 'GET') return json(request, { error: 'method_not_allowed' }, 405);
 
     const url = new URL(request.url);
+    if (url.pathname === '/match' && request.method === 'POST') {
+      const distance = normalizeDistance(url.searchParams.get('distance'));
+      if (!distance) return json(request, { error: 'invalid_distance' }, 400);
+
+      let body;
+      try { body = await request.json(); }
+      catch { return json(request, { error: 'invalid_json' }, 400); }
+
+      const names = [...new Set((Array.isArray(body?.names) ? body.names : [])
+        .map(normalizeName).filter((name) => name.length >= 3))].slice(0, 1000);
+      if (!names.length) return json(request, { rows: [] });
+
+      const statements = [];
+      for (let i = 0; i < names.length; i += 80) {
+        const chunk = names.slice(i, i + 80);
+        const placeholders = chunk.map(() => '?').join(',');
+        statements.push(env.DB.prepare(`
+          SELECT full_name,birth_year,sex,pb_sec,pb_course,pb_date,club,athlete_ffa_id
+          FROM athletes
+          WHERE distance = ? AND name_key IN (${placeholders})
+        `).bind(distance, ...chunk));
+      }
+
+      const batches = await env.DB.batch(statements);
+      const rows = batches.flatMap((batch) => batch.results || []);
+      return json(request, { rows });
+    }
+
+    if (request.method !== 'GET') return json(request, { error: 'method_not_allowed' }, 405);
+
     if (url.pathname === '/health') {
       const row = await env.DB.prepare('SELECT COUNT(*) AS n FROM athletes').first();
       return json(request, { ok: true, athletes: Number(row?.n || 0) });
