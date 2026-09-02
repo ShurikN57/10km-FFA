@@ -6,11 +6,11 @@
 <meta name="theme-color" content="#0f1115">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Runners">
-<link rel="manifest" href="./manifest.webmanifest">
+<meta name="apple-mobile-web-app-title" content="RP">
+<link rel="manifest" href="./manifest.webmanifest?v=20260902a">
 <link rel="icon" href="./icons/favicon-32x32.png" type="image/png">
 <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">
-<title>Runners</title>
+<title>RP</title>
 <script src="./core.js"></script>
 <style>
 :root {
@@ -210,6 +210,26 @@ th{background:#141922}
 .ffa-filter-field select,.ffa-filter-field input:not([type="hidden"]){width:100%;min-width:0;height:44px;min-height:44px;margin:0;padding:8px 9px;border-color:rgba(148,163,184,.14)!important}
 #ffaFullClub{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:2.5rem!important}
 .ffa-filter-apply{width:100%;margin-top:15px;min-height:45px}
+.ffa-time-input{cursor:pointer;caret-color:transparent;user-select:none;-webkit-user-select:none}
+.ffa-time-picker{display:none;position:fixed;inset:0;z-index:1600}
+.ffa-time-picker.show{display:block}
+.ffa-time-picker-backdrop{position:absolute;inset:0;border:0;border-radius:0;background:rgba(0,0,0,.72);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)}
+.ffa-time-picker-sheet{position:absolute;left:50%;bottom:0;transform:translateX(-50%);width:min(640px,100%);background:#111720;border:1px solid rgba(148,163,184,.2);border-bottom:0;border-radius:25px 25px 0 0;padding:15px 16px calc(16px + env(safe-area-inset-bottom));box-shadow:0 -24px 55px rgba(0,0,0,.5)}
+.ffa-time-picker-head{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px;margin-bottom:6px}
+.ffa-time-picker-head h3{margin:0;font-size:18px;text-align:center;white-space:nowrap}
+.ffa-time-picker-action{min-height:38px;padding:6px 4px;border:0;background:transparent;box-shadow:none;color:var(--accent);font-size:13px}
+.ffa-time-picker-action:first-child{text-align:left}
+.ffa-time-picker-action:last-child{text-align:right}
+.ffa-time-wheels{display:grid;grid-template-columns:minmax(0,1fr) 16px minmax(0,1fr) 16px minmax(0,1fr);align-items:center;height:216px;margin:2px 0 5px}
+.ffa-time-wheel-wrap{position:relative;height:216px;min-width:0}
+.ffa-time-wheel-wrap:before{content:"";position:absolute;left:0;right:0;top:84px;height:48px;border:1px solid rgba(148,163,184,.25);background:rgba(255,255,255,.045);border-radius:13px;pointer-events:none;z-index:0}
+.ffa-time-wheel{position:relative;z-index:1;height:216px;overflow-y:auto;padding:84px 0;scroll-snap-type:y mandatory;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;scrollbar-width:none;-webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 27%,#000 73%,transparent 100%);mask-image:linear-gradient(to bottom,transparent 0,#000 27%,#000 73%,transparent 100%)}
+.ffa-time-wheel::-webkit-scrollbar{display:none}
+.ffa-time-option{display:block;width:100%;height:48px;min-height:48px;padding:0;border:0;border-radius:0;background:transparent;color:#727b89;font-size:22px;font-variant-numeric:tabular-nums;scroll-snap-align:center;box-shadow:none;touch-action:pan-y}
+.ffa-time-option.active{color:#fff;font-size:25px}
+.ffa-time-colon{font-size:27px;font-weight:800;color:#cbd2dc;text-align:center}
+.ffa-time-clear{display:block;margin:2px auto 0;min-height:36px;padding:5px 9px;border:0;background:transparent;color:#9ca7b6;box-shadow:none;font-size:12px}
+.ffa-time-clear[hidden]{display:none}
 .rank-pagination{display:flex;gap:8px;margin-top:10px}
 .rank-pagination button{flex:1}
 #restoreCard{margin-bottom:12px}
@@ -289,10 +309,28 @@ th{background:#141922}
               <label class="ffa-filter-field"><span>Département</span><select id="ffaFullDepartment"><option value="">Tous</option></select></label>
               <label class="ffa-filter-field"><span>Club</span><select id="ffaFullClub"><option value="">Tous</option></select></label>
               <label class="ffa-filter-field"><span>Saison</span><select id="ffaFullRaceYear"><option value="">Toutes</option></select></label>
-              <label class="ffa-filter-field"><span>Temps min</span><input id="ffaFullMinPb" inputmode="numeric" placeholder="Ex. 30:00"></label>
-              <label class="ffa-filter-field"><span>Temps max</span><input id="ffaFullMaxPb" inputmode="numeric" placeholder="Ex. 35:00"></label>
+              <label class="ffa-filter-field"><span>Temps min</span><input id="ffaFullMinPb" class="ffa-time-input" type="text" inputmode="none" readonly aria-haspopup="dialog" placeholder="Ex. 30:00"></label>
+              <label class="ffa-filter-field"><span>Temps max</span><input id="ffaFullMaxPb" class="ffa-time-input" type="text" inputmode="none" readonly aria-haspopup="dialog" placeholder="Ex. 35:00"></label>
             </div>
             <button type="button" class="primary ffa-filter-apply" data-ffa-filter-close>Afficher les résultats</button>
+          </div>
+        </div>
+        <div id="ffaTimePicker" class="ffa-time-picker" aria-hidden="true">
+          <button type="button" id="ffaTimeBackdrop" class="ffa-time-picker-backdrop" aria-label="Fermer le sélecteur de temps"></button>
+          <div class="ffa-time-picker-sheet" role="dialog" aria-modal="true" aria-labelledby="ffaTimeTitle">
+            <div class="ffa-time-picker-head">
+              <button type="button" id="ffaTimeCancel" class="ffa-time-picker-action">Annuler</button>
+              <h3 id="ffaTimeTitle">Temps min</h3>
+              <button type="button" id="ffaTimeValidate" class="ffa-time-picker-action">Valider</button>
+            </div>
+            <div class="ffa-time-wheels" aria-label="Durée en heures, minutes et secondes">
+              <div class="ffa-time-wheel-wrap"><div id="ffaTimeHours" class="ffa-time-wheel" role="listbox" aria-label="Heures"></div></div>
+              <div class="ffa-time-colon" aria-hidden="true">:</div>
+              <div class="ffa-time-wheel-wrap"><div id="ffaTimeMinutes" class="ffa-time-wheel" role="listbox" aria-label="Minutes"></div></div>
+              <div class="ffa-time-colon" aria-hidden="true">:</div>
+              <div class="ffa-time-wheel-wrap"><div id="ffaTimeSeconds" class="ffa-time-wheel" role="listbox" aria-label="Secondes"></div></div>
+            </div>
+            <button type="button" id="ffaTimeClear" class="ffa-time-clear" hidden>Effacer ce temps</button>
           </div>
         </div>
         <div id="ffaFullMsg" class="msg" style="margin:2px 0 9px"></div>
@@ -643,11 +681,113 @@ document.querySelectorAll(".ffaRankModeBtn").forEach(btn=>{
 let ffaFullPage=0;
 const FFA_FULL_PAGE_SIZE=100;
 function parsePbLimit(v){
-  v=String(v||"").trim().replace("'",":").replace('"','');
+  v=String(v||"").trim().replace(/'/g,":").replace(/"/g,"");
   if(!v) return null;
   if(/^\d+$/.test(v)) return Number(v)*60;
-  const m=v.match(/^(\d{1,2})[:h](\d{1,2})$/i);
-  return m ? Number(m[1])*60+Number(m[2]) : null;
+  const parts=v.replace(/h/gi,":").split(":").map(part=>Number(part));
+  if(parts.some(part=>!Number.isInteger(part)||part<0)) return null;
+  if(parts.length===2){
+    const minutes=parts[0], seconds=parts[1];
+    return seconds<60 ? minutes*60+seconds : null;
+  }
+  if(parts.length===3){
+    const hours=parts[0], minutes=parts[1], seconds=parts[2];
+    return minutes<60&&seconds<60 ? hours*3600+minutes*60+seconds : null;
+  }
+  return null;
+}
+const FFA_TIME_ITEM_HEIGHT=48;
+const ffaTimePickerState={input:null,values:[0,0,0],built:false,timers:[null,null,null]};
+function padFfaTime(value){ return String(value).padStart(2,"0"); }
+function formatFfaTime(hours,minutes,seconds){
+  return hours>0 ? hours+":"+padFfaTime(minutes)+":"+padFfaTime(seconds) : padFfaTime(minutes)+":"+padFfaTime(seconds);
+}
+function buildFfaTimeWheel(id,max,index){
+  const wheel=$(id);
+  if(!wheel) return;
+  const fragment=document.createDocumentFragment();
+  for(let value=0;value<=max;value++){
+    const option=document.createElement("button");
+    option.type="button";
+    option.className="ffa-time-option";
+    option.dataset.value=String(value);
+    option.textContent=padFfaTime(value);
+    option.setAttribute("role","option");
+    option.setAttribute("aria-selected","false");
+    option.tabIndex=-1;
+    fragment.appendChild(option);
+  }
+  wheel.replaceChildren(fragment);
+  const sync=()=>{
+    const value=Math.max(0,Math.min(max,Math.round(wheel.scrollTop/FFA_TIME_ITEM_HEIGHT)));
+    ffaTimePickerState.values[index]=value;
+    wheel.querySelectorAll(".ffa-time-option").forEach(option=>{
+      const active=Number(option.dataset.value)===value;
+      option.classList.toggle("active",active);
+      option.setAttribute("aria-selected",active?"true":"false");
+    });
+  };
+  wheel.addEventListener("scroll",()=>{
+    clearTimeout(ffaTimePickerState.timers[index]);
+    ffaTimePickerState.timers[index]=setTimeout(sync,70);
+  },{passive:true});
+  wheel.addEventListener("click",event=>{
+    const option=event.target.closest(".ffa-time-option");
+    if(!option) return;
+    wheel.scrollTo({top:Number(option.dataset.value)*FFA_TIME_ITEM_HEIGHT,behavior:"smooth"});
+  });
+  wheel._syncFfaTime=sync;
+}
+function ensureFfaTimePicker(){
+  if(ffaTimePickerState.built) return;
+  buildFfaTimeWheel("ffaTimeHours",23,0);
+  buildFfaTimeWheel("ffaTimeMinutes",59,1);
+  buildFfaTimeWheel("ffaTimeSeconds",59,2);
+  ffaTimePickerState.built=true;
+}
+function setFfaTimeWheelValue(id,value){
+  const wheel=$(id);
+  if(!wheel) return;
+  wheel.scrollTop=value*FFA_TIME_ITEM_HEIGHT;
+  if(wheel._syncFfaTime) wheel._syncFfaTime();
+}
+function syncAllFfaTimeWheels(){
+  ["ffaTimeHours","ffaTimeMinutes","ffaTimeSeconds"].forEach(id=>{
+    const wheel=$(id);
+    if(wheel&&wheel._syncFfaTime) wheel._syncFfaTime();
+  });
+}
+function ffaTimePartsFromSeconds(total){
+  total=Math.max(0,Number(total)||0);
+  return [Math.floor(total/3600),Math.floor(total%3600/60),Math.floor(total%60)];
+}
+function closeFfaTimePicker(restoreFocus=true){
+  const picker=$("ffaTimePicker");
+  if(!picker) return;
+  picker.classList.remove("show");
+  picker.setAttribute("aria-hidden","true");
+  document.body.style.overflow=$("ffaFiltersDrawer")?.classList.contains("show")?"hidden":"";
+  if(restoreFocus&&ffaTimePickerState.input) ffaTimePickerState.input.focus();
+}
+function openFfaTimePicker(input){
+  const picker=$("ffaTimePicker");
+  if(!picker||!input) return;
+  ensureFfaTimePicker();
+  ffaTimePickerState.input=input;
+  const placeholder=String(input.placeholder||"").replace(/^Ex\.\s*/i,"");
+  const total=parsePbLimit(input.value);
+  const initial=ffaTimePartsFromSeconds(total==null?parsePbLimit(placeholder):total);
+  ffaTimePickerState.values=initial;
+  $("ffaTimeTitle").textContent=input.id==="ffaFullMinPb"?"Temps min":"Temps max";
+  $("ffaTimeClear").hidden=!String(input.value||"").trim();
+  picker.classList.add("show");
+  picker.setAttribute("aria-hidden","false");
+  document.body.style.overflow="hidden";
+  requestAnimationFrame(()=>{
+    setFfaTimeWheelValue("ffaTimeHours",initial[0]);
+    setFfaTimeWheelValue("ffaTimeMinutes",initial[1]);
+    setFfaTimeWheelValue("ffaTimeSeconds",initial[2]);
+  });
 }
 let ffaRankingToken=0;
 let ffaFullTimer=null;
@@ -893,7 +1033,40 @@ if(_ffaFrenchQuick) _ffaFrenchQuick.addEventListener('click',()=>{
 const _ffaFilterOpen=$('ffaFilterOpen');
 if(_ffaFilterOpen) _ffaFilterOpen.addEventListener('click',()=>setFfaFilterDrawer(true));
 document.querySelectorAll('[data-ffa-filter-close]').forEach(button=>button.addEventListener('click',()=>setFfaFilterDrawer(false)));
-document.addEventListener('keydown',event=>{if(event.key==='Escape'&&$('ffaFiltersDrawer')?.classList.contains('show'))setFfaFilterDrawer(false);});
+["ffaFullMinPb","ffaFullMaxPb"].forEach(id=>{
+  const input=$(id);
+  if(input) input.addEventListener("click",()=>openFfaTimePicker(input));
+});
+const _ffaTimeCancel=$("ffaTimeCancel");
+const _ffaTimeBackdrop=$("ffaTimeBackdrop");
+const _ffaTimeValidate=$("ffaTimeValidate");
+const _ffaTimeClear=$("ffaTimeClear");
+if(_ffaTimeCancel) _ffaTimeCancel.addEventListener("click",()=>closeFfaTimePicker());
+if(_ffaTimeBackdrop) _ffaTimeBackdrop.addEventListener("click",()=>closeFfaTimePicker());
+if(_ffaTimeValidate) _ffaTimeValidate.addEventListener("click",()=>{
+  syncAllFfaTimeWheels();
+  const input=ffaTimePickerState.input;
+  if(input){
+    input.value=formatFfaTime(ffaTimePickerState.values[0],ffaTimePickerState.values[1],ffaTimePickerState.values[2]);
+    syncFfaFilterUi();
+    renderFullFfaRanking(true);
+  }
+  closeFfaTimePicker();
+});
+if(_ffaTimeClear) _ffaTimeClear.addEventListener("click",()=>{
+  const input=ffaTimePickerState.input;
+  if(input){
+    input.value="";
+    syncFfaFilterUi();
+    renderFullFfaRanking(true);
+  }
+  closeFfaTimePicker();
+});
+document.addEventListener("keydown",event=>{
+  if(event.key!=="Escape") return;
+  if($("ffaTimePicker")?.classList.contains("show")){ closeFfaTimePicker(); return; }
+  if($("ffaFiltersDrawer")?.classList.contains("show")) setFfaFilterDrawer(false);
+});
 function resetFfaSecondaryFilters(){
   $("ffaFullCategory").value="";
   $("ffaFullYear").value="";
