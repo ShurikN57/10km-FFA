@@ -428,6 +428,7 @@ let showOnlyNo = false;
 let showOnlyFound = false;
 let sortKey = "pos";
 let sortDir = 1;
+let analysisMatchToken = 0;
 const $ = id => document.getElementById(id);
 const FFA_API="https://ffa-comparateur-api.57compte2.workers.dev";
 let ffaApiSearchToken=0;
@@ -499,7 +500,6 @@ function switchAppTab(tab){
 
   if(tab==="classement" && typeof renderFullFfaRanking==="function") renderFullFfaRanking(false);
   if(tab==="recherche" && typeof renderFfaAthleteSearch==="function") renderFfaAthleteSearch();
-  if(tab==="analyse" && (!ffaReady || ffaLoadedDistance!==currentDistance)) ensureFfaLoaded();
 
   requestAnimationFrame(()=>{
     window.scrollTo(0,0);
@@ -1156,9 +1156,9 @@ function updateSortArrows(){
   });
 }
 
-function setImportEnabled(on){
+function setImportEnabled(){
   const el=$("pasteBtn");
-  if(el) el.disabled=!on;
+  if(el) el.disabled=false;
 }
 
 const LAST_PASTE_KEY="comparateur_ffa_lastPaste";
@@ -1182,6 +1182,51 @@ function clearLastPaste(){
   }catch(e){}
 }
 
+async function matchRaceWithApi(source="texte"){
+  const token=++analysisMatchToken;
+  result=[];
+  render();
+  if(!race.length) return;
+
+  const names=[...new Set(race.flatMap(r=>[
+    norm((r.nom||"")+" "+(r.prenom||"")),
+    norm((r.prenom||"")+" "+(r.nom||""))
+  ]).filter(Boolean))];
+
+  $("raceMsg").textContent=race.length+" participants détectés ("+source+"). Recherche des correspondances FFA…";
+  try{
+    const response=await fetch(FFA_API+"/match?distance="+encodeURIComponent(currentDistance),{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({names})
+    });
+    if(!response.ok) throw new Error("HTTP "+response.status);
+    const data=await response.json();
+    if(token!==analysisMatchToken) return;
+
+    const candidates=(Array.isArray(data.rows)?data.rows:[]).map(row=>({
+      full_name:row.full_name||"",
+      name_key:nameKey(row.full_name||""),
+      annee_naissance:row.birth_year||"",
+      sexe:row.sex||"",
+      club:row.club||"",
+      pb_sec:row.pb_sec==null?null:Number(row.pb_sec),
+      pb_chrono:row.pb_sec==null?"":chronoFromSec(row.pb_sec),
+      pb_course:row.pb_course||"",
+      pb_date:row.pb_date||"",
+      athlete_ffa_id:row.athlete_ffa_id||"",
+      ffa_url:row.athlete_ffa_id?"https://www.athle.fr/athletes/"+row.athlete_ffa_id+"/resultats":""
+    }));
+    result=computeResults(race,candidates);
+    render();
+    const exact=result.filter(x=>x.status==="exact").length;
+    $("raceMsg").textContent=race.length+" participants détectés ("+source+") · "+exact+" correspondances FFA.";
+  }catch(err){
+    if(token!==analysisMatchToken) return;
+    $("raceMsg").textContent=race.length+" participants détectés ("+source+") · correspondances FFA indisponibles : "+(err&&err.message?err.message:err);
+  }
+}
+
 function runPasteAnalysis(){
   $("restoreCard").style.display="none";
   const text=$("paste").value;
@@ -1195,9 +1240,14 @@ function runPasteAnalysis(){
   $("raceMsg").textContent=parsed.length
     ? parsed.length+" participants détectés ("+source+")."
     : "Aucun participant reconnu.";
-  if(parsed.length) saveLastPaste(text);
-  compute();
-  if(parsed.length) switchAppTab("analyse");
+  if(parsed.length){
+    saveLastPaste(text);
+    switchAppTab("analyse");
+    matchRaceWithApi(source);
+  }else{
+    result=[];
+    render();
+  }
 }
 
 function compute() {
@@ -1241,7 +1291,7 @@ function render() {
       <td>${esc(p.pb_chrono||"—")}</td>
     </tr>`;
   }).join("");
-  const total=result.length, exact=result.filter(x=>x.status==="exact").length,
+  const total=result.length||race.length, exact=result.filter(x=>x.status==="exact").length,
     amb=result.filter(x=>x.status==="ambiguous").length, none=result.filter(x=>x.status==="none").length;
   $("sTotal").textContent=total; $("sExact").textContent=exact; $("sAmb").textContent=amb; $("sNone").textContent=none;
 }
@@ -1256,7 +1306,7 @@ $("restoreBtn").onclick=()=>{
   if(!saved){ refreshRestoreButton(); return; }
   $("paste").value=saved;
   $("restoreCard").style.display="none";
-  if(ffaReady) runPasteAnalysis(); else { pendingAutoParse=true; ensureFfaLoaded(); }
+  runPasteAnalysis();
 };
 
 setImportEnabled(false);
@@ -1345,8 +1395,9 @@ document.querySelectorAll("[data-distance]").forEach(btn=>btn.addEventListener("
 }));
 restoreDistanceReloadUi();
 updateDistanceUi();
-if(activeAppTab==="analyse") ensureFfaLoaded();
-else if(activeAppTab==="classement") renderFullFfaRanking(true);
+if(activeAppTab==="analyse"){
+  if(pendingAutoParse){ pendingAutoParse=false; runPasteAnalysis(); }
+}else if(activeAppTab==="classement") renderFullFfaRanking(true);
 else renderFfaAthleteSearch();
 
 // Bouton "Coller" natif : déclenché par un vrai tap, donc un geste utilisateur
@@ -1360,7 +1411,7 @@ if(_pasteBtn) _pasteBtn.onclick=async()=>{
     const text=await navigator.clipboard.readText();
     if(!text){ $("raceMsg").textContent="Presse-papier vide."; return; }
     $("paste").value=text;
-    if(ffaReady) runPasteAnalysis(); else { pendingAutoParse=true; ensureFfaLoaded(); }
+    runPasteAnalysis();
   }catch(e){
     $("raceMsg").textContent="Collage automatique impossible.";
   }
@@ -1374,7 +1425,7 @@ $("paste").addEventListener("input", ()=>{
   pasteDebounceTimer=setTimeout(()=>{
     const text=$("paste").value.trim();
     if(text.length<10) return;
-    if(ffaReady) runPasteAnalysis(); else { pendingAutoParse=true; ensureFfaLoaded(); }
+    runPasteAnalysis();
   }, 500);
 });
 
@@ -1406,10 +1457,7 @@ $("paste").addEventListener("input", ()=>{
       render();
 
       history.replaceState(null,'',location.pathname+location.search);
-      // Si la base est déjà prête, calcule immédiatement. Sinon le .then()
-      // de loadFfaRows() calculera automatiquement grâce à race.length.
-      if(ffaReady && parsed.length) compute();
-      else if(parsed.length){ pendingAutoParse=true; ensureFfaLoaded(); }
+      if(parsed.length) matchRaceWithApi(source);
     }catch(e){
       alert('Import : '+e.message);
     }
