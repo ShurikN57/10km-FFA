@@ -1,0 +1,96 @@
+[
+  {
+    "results": [
+      {
+        "distance": "marathon",
+        "full_name": "(DE) CHERISEY Henry",
+        "birth_year": 2002,
+        "sex": "M",
+        "pb_sec": 11408,
+        "athlete_ffa_id": "3238713"
+      },
+      {
+        "distance": "semi",
+        "full_name": "(DE) CHERISEY Henry",
+        "birth_year": 2002,
+        "sex": "M",
+        "pb_sec": 5607,
+        "athlete_ffa_id": "3238713"
+      },
+      {
+        "distance": "semi",
+        "full_name": "BITTEROLF Thomas",
+        "birth_year": null,
+        "sex": "M",
+        "pb_sec": 6135,
+        "athlete_ffa_id": "3611328"
+      },
+      {
+        "distance": "10k",
+        "full_name": "DE CHERISEY Henry",
+        "birth_year": 2002,
+        "sex": "M",
+        "pb_sec": 2356,
+        "athlete_ffa_id": "3238713"
+      },
+      {
+        "distance": "marathon",
+        "full_name": "DE CHERISEY Henry",
+        "birth_year": 2002,
+        "sex": "M",
+        "pb_sec": 12559,
+        "athlete_ffa_id": "3238713"
+      },
+      {
+        "distance": "10k",
+        "full_name": "LEFEBVRE Valentine",
+        "birth_year": 1997,
+        "sex": "F",
+        "pb_sec": 2563,
+        "athlete_ffa_id": "3382427"
+      },
+      {
+        "distance": "marathon",
+        "full_name": "LEFEBVRE Valentine",
+        "birth_year": 1997,
+        "sex": "F",
+        "pb_sec": 11940,
+        "athlete_ffa_id": "3382427"
+      },
+      {
+        "distance": "semi",
+        "full_name": "LEFEBVRE Valentine",
+        "birth_year": 1997,
+        "sex": "F",
+        "pb_sec": 6010,
+        "athlete_ffa_id": "3382427"
+      },
+      {
+        "distance": "semi",
+        "full_name": "LEFEBVRE Valentine",
+        "birth_year": 1997,
+        "sex": "F",
+        "pb_sec": 5687,
+        "athlete_ffa_id": "3382427"
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "WEUR",
+      "served_by_colo": "LHR",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 245.1597
+      },
+      "duration": 245.1597,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 1104109568,
+      "rows_read": 1437074,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]
