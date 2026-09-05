@@ -1,12 +1,14 @@
 // ==UserScript==
 // @name         Importer vers Comparateur 10km
 // @namespace    comparateur-10km-ffa
-// @version      1.1
-// @description  Collecte un classement GoTiming ou UTMB complet et l'envoie vers RP.
+// @version      1.2
+// @description  Collecte un classement GoTiming, UTMB ou ACN Timing et l'envoie vers RP.
 // @match        https://*.gotiming.fr/*
 // @match        https://gotiming.fr/*
 // @match        https://*.utmb.world/*
 // @match        https://utmb.world/*
+// @match        https://*.acn-timing.com/*
+// @match        https://acn-timing.com/*
 // @run-at       document-idle
 // @inject-into  page
 // ==/UserScript==
@@ -183,6 +185,69 @@
     return uniq(textScanGoTiming());
   }
 
+  // ---------- ACN Timing ----------
+  function domTableACN() {
+    var tables = [].slice.call(document.querySelectorAll('table'));
+    var best = [];
+    var rankRe = /^(\d{1,5})\.?$/;
+    var timeRe = /^\d{1,2}:\d{2}(?::\d{2})?$/;
+    for (var t = 0; t < tables.length; t++) {
+      var trs = [].slice.call(tables[t].querySelectorAll('tbody tr'));
+      var out = [];
+      for (var r = 0; r < trs.length && out.length < 100; r++) {
+        var cells = [].slice.call(trs[r].querySelectorAll('td'));
+        if (cells.length < 3) continue;
+        var rankMatch = C(cells[0].innerText || cells[0].textContent).match(rankRe);
+        if (!rankMatch) continue;
+        var rankNumber = Number(rankMatch[1]);
+        if (rankNumber < 1 || rankNumber > 100) continue;
+
+        // Sur ACN, le club est place sous le nom dans la meme cellule.
+        // Le nom seul est contenu dans la balise en gras.
+        var nameNode = cells[2].querySelector('b,strong');
+        var name = C(nameNode ? (nameNode.innerText || nameNode.textContent) : (cells[2].innerText || '').split('\n')[0]);
+        if (!name) continue;
+
+        // Le dernier chrono de la ligne correspond au temps courant de
+        // l'athlete. Il sert uniquement a conserver le format d'import RP.
+        var time = '';
+        for (var c = cells.length - 1; c >= 3; c--) {
+          var value = C(cells[c].innerText || cells[c].textContent);
+          if (timeRe.test(value)) { time = value; break; }
+        }
+        if (!time) time = '00:00';
+
+        var category = '';
+        for (var c2 = cells.length - 1; c2 >= 3; c2--) {
+          var possibleCategory = C(cells[c2].innerText || cells[c2].textContent).toUpperCase();
+          if (/^[A-Z0-9]{2,6}[FH]$/.test(possibleCategory)) { category = possibleCategory; break; }
+        }
+        var sex = /F$/.test(category) ? 'F' : (/H$/.test(category) ? 'M' : '');
+        out.push({
+          rank: String(rankNumber),
+          time: time,
+          name: name,
+          sex: sex,
+          category: category,
+          bib: C(cells[1].innerText || cells[1].textContent),
+          uri: '',
+          nationality: '',
+          score: ''
+        });
+      }
+      if (out.length > best.length) best = out;
+    }
+    return best.slice(0, 100);
+  }
+
+  function scanACN() {
+    var rows = uniq(domTableACN()).sort(function (a, b) {
+      return (Number(a.rank) || 999999) - (Number(b.rank) || 999999);
+    });
+    if (!rows.length) throw new Error('ACN Timing : aucun participant reconnu.');
+    return rows.slice(0, 100);
+  }
+
   // ---------- Construction du texte + envoi ----------
   function buildText(source, rows) {
     if (source === 'UTMB') {
@@ -215,6 +280,9 @@
     }
     if (host.indexOf('gotiming.fr') >= 0) {
       return domTableGoTiming().length > 0 || textScanGoTiming().length > 0;
+    }
+    if (host.indexOf('acn-timing.com') >= 0) {
+      return domTableACN().length > 0;
     }
     return false;
   }
@@ -249,6 +317,9 @@
         } else if (host.indexOf('gotiming.fr') >= 0) {
           source = 'GoTiming';
           rows = await scanGoTiming(function (msg) { overlay.textContent = msg; });
+        } else if (host.indexOf('acn-timing.com') >= 0) {
+          source = 'ACN Timing';
+          rows = scanACN();
         } else {
           throw new Error('Site non reconnu.');
         }
