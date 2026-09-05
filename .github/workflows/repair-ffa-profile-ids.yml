@@ -1,0 +1,48 @@
+name: Repair verified FFA profile identifiers
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/repair-ffa-profile-ids.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Repair verified identifiers
+        working-directory: cloudflare-prototype
+        run: |
+          npx --yes wrangler@latest d1 execute ffa-comparateur --remote --command "
+            UPDATE athletes
+            SET athlete_ffa_id = CASE
+              WHEN name_key = 'DE CHERISEY HENRY' AND birth_year = 2002 AND sex = 'M' THEN '3238713'
+              WHEN name_key = 'LEFEBVRE VALENTINE' AND birth_year = 1997 AND sex = 'F' THEN '3382427'
+              WHEN distance = 'semi' AND name_key = 'BITTEROLF THOMAS' AND birth_year IS NULL AND sex = 'M' THEN '3611328'
+              ELSE athlete_ffa_id
+            END
+            WHERE athlete_ffa_id IS NULL OR TRIM(athlete_ffa_id) = '';
+          "
+          npx --yes wrangler@latest d1 execute ffa-comparateur --remote --json --command "
+            SELECT distance, full_name, birth_year, sex, pb_sec, athlete_ffa_id
+            FROM athletes
+            WHERE (name_key = 'DE CHERISEY HENRY' AND birth_year = 2002 AND sex = 'M')
+               OR (name_key = 'LEFEBVRE VALENTINE' AND birth_year = 1997 AND sex = 'F')
+               OR (distance = 'semi' AND name_key = 'BITTEROLF THOMAS' AND birth_year IS NULL AND sex = 'M')
+            ORDER BY full_name, distance;
+          " > profile_id_repair_result.json
+      - name: Commit verification
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add cloudflare-prototype/profile_id_repair_result.json
+          git diff --cached --quiet || git commit -m "Verify repaired FFA profile identifiers"
+          git push
