@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Importer vers Comparateur 10km
 // @namespace    comparateur-10km-ffa
-// @version      1.2
+// @version      1.3
 // @description  Collecte un classement GoTiming, UTMB ou ACN Timing et l'envoie vers RP.
 // @match        https://*.gotiming.fr/*
 // @match        https://gotiming.fr/*
@@ -192,7 +192,7 @@
     var rankRe = /^(\d{1,5})\.?$/;
     var timeRe = /^\d{1,2}:\d{2}(?::\d{2})?$/;
     for (var t = 0; t < tables.length; t++) {
-      var trs = [].slice.call(tables[t].querySelectorAll('tbody tr'));
+      var trs = [].slice.call(tables[t].querySelectorAll('tr'));
       var out = [];
       for (var r = 0; r < trs.length && out.length < 100; r++) {
         var cells = [].slice.call(trs[r].querySelectorAll('td'));
@@ -240,8 +240,37 @@
     return best.slice(0, 100);
   }
 
+  function textScanACN() {
+    var raw = document.body ? document.body.innerText : '';
+    var out = [];
+    var rowRe = /(?:^|\n)(\d{1,3})\.\s*([\s\S]*?)(?=\n\d{1,3}\.\s*(?:\t|\n)|$)/g;
+    var timeRe = /^\d{1,2}:\d{2}(?::\d{2})?$/;
+    var match;
+    while ((match = rowRe.exec(raw)) !== null && out.length < 100) {
+      var rankNumber = Number(match[1]);
+      if (rankNumber < 1 || rankNumber > 100) continue;
+      var tokens = match[2].split(/[\t\n]+/).map(C).filter(Boolean);
+      var name = '', time = '', category = '';
+      for (var i = 0; i < tokens.length; i++) {
+        var token = tokens[i];
+        if (/^\d+$/.test(token) || token === '-' || timeRe.test(token)) continue;
+        if (/[A-Za-z\u00c0-\u00ff]{2,}/.test(token)) { name = token; break; }
+      }
+      for (var j = tokens.length - 1; j >= 0; j--) {
+        if (!time && timeRe.test(tokens[j])) time = tokens[j];
+        var possibleCategory = tokens[j].toUpperCase();
+        if (!category && /^[A-Z0-9]{2,6}[FH]$/.test(possibleCategory)) category = possibleCategory;
+      }
+      if (!name) continue;
+      var sex = /F$/.test(category) ? 'F' : (/H$/.test(category) ? 'M' : '');
+      out.push({ rank: String(rankNumber), time: time || '00:00', name: name, sex: sex, category: category, bib: '', uri: '', nationality: '', score: '' });
+    }
+    return out;
+  }
+
   function scanACN() {
-    var rows = uniq(domTableACN()).sort(function (a, b) {
+    var domRows = domTableACN();
+    var rows = uniq(domRows.length ? domRows : textScanACN()).sort(function (a, b) {
       return (Number(a.rank) || 999999) - (Number(b.rank) || 999999);
     });
     if (!rows.length) throw new Error('ACN Timing : aucun participant reconnu.');
@@ -282,7 +311,10 @@
       return domTableGoTiming().length > 0 || textScanGoTiming().length > 0;
     }
     if (host.indexOf('acn-timing.com') >= 0) {
-      return domTableACN().length > 0;
+      // Sur iPhone, ACN construit parfois le classement dans une vue mobile
+      // differente du tableau de bureau. Le bouton doit tout de meme etre
+      // disponible pendant que les resultats finissent de se charger.
+      return true;
     }
     return false;
   }
