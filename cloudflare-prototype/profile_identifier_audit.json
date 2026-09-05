@@ -5,25 +5,29 @@
         "distance": "10k",
         "profiles": 533085,
         "missing_ids": 179243,
-        "linked_profiles": 353842
+        "linked_profiles": 353842,
+        "missing_ids_with_club": 0
       },
       {
         "distance": "5k",
         "profiles": 124626,
         "missing_ids": 40949,
-        "linked_profiles": 83677
+        "linked_profiles": 83677,
+        "missing_ids_with_club": 0
       },
       {
         "distance": "marathon",
         "profiles": 288475,
         "missing_ids": 86264,
-        "linked_profiles": 202211
+        "linked_profiles": 202211,
+        "missing_ids_with_club": 0
       },
       {
         "distance": "semi",
         "profiles": 490879,
         "missing_ids": 155509,
-        "linked_profiles": 335370
+        "linked_profiles": 335370,
+        "missing_ids_with_club": 0
       }
     ],
     "success": true,
@@ -33,9 +37,9 @@
       "served_by_colo": "LHR",
       "served_by_primary": true,
       "timings": {
-        "sql_duration_ms": 10761.4354
+        "sql_duration_ms": 5798.7127
       },
-      "duration": 10761.4354,
+      "duration": 5798.7127,
       "changes": 0,
       "last_row_id": 0,
       "changed_db": false,

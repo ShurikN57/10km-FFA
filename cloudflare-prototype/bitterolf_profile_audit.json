@@ -1,0 +1,34 @@
+[
+  {
+    "results": [
+      {
+        "distance": "semi",
+        "full_name": "BITTEROLF Thomas",
+        "name_key": "BITTEROLF THOMAS",
+        "birth_year": null,
+        "sex": "M",
+        "pb_sec": 6135,
+        "club": "NL la veille de la compétition",
+        "athlete_ffa_id": null
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "WEUR",
+      "served_by_colo": "LHR",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 1183.0235
+      },
+      "duration": 1183.0235,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 1104109568,
+      "rows_read": 1437065,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]
