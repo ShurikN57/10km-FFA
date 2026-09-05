@@ -26,22 +26,40 @@ jobs:
               distance,
               COUNT(*) AS profiles,
               SUM(CASE WHEN athlete_ffa_id IS NULL OR TRIM(athlete_ffa_id) = '' THEN 1 ELSE 0 END) AS missing_ids,
-              SUM(CASE WHEN athlete_ffa_id IS NOT NULL AND TRIM(athlete_ffa_id) <> '' THEN 1 ELSE 0 END) AS linked_profiles
+              SUM(CASE WHEN athlete_ffa_id IS NOT NULL AND TRIM(athlete_ffa_id) <> '' THEN 1 ELSE 0 END) AS linked_profiles,
+              SUM(CASE WHEN (athlete_ffa_id IS NULL OR TRIM(athlete_ffa_id) = '') AND club <> 'NL la veille de la compétition' THEN 1 ELSE 0 END) AS missing_ids_with_club
             FROM athletes
             GROUP BY distance
             ORDER BY distance;
           " > profile_identifier_audit.json
           npx --yes wrangler@latest d1 execute ffa-comparateur --remote --json --command "
-            SELECT distance, full_name, name_key, birth_year, sex, pb_sec, club
+            WITH unique_identity_ids AS (
+              SELECT name_key, birth_year, sex, MIN(TRIM(athlete_ffa_id)) AS athlete_ffa_id
+              FROM athletes
+              WHERE athlete_ffa_id IS NOT NULL AND TRIM(athlete_ffa_id) <> ''
+              GROUP BY name_key, birth_year, sex
+              HAVING COUNT(DISTINCT TRIM(athlete_ffa_id)) = 1
+            )
+            SELECT a.distance, COUNT(*) AS safely_backfillable
+            FROM athletes a
+            JOIN unique_identity_ids u
+              ON u.name_key = a.name_key
+             AND u.birth_year IS a.birth_year
+             AND u.sex IS a.sex
+            WHERE a.athlete_ffa_id IS NULL OR TRIM(a.athlete_ffa_id) = ''
+            GROUP BY a.distance
+            ORDER BY a.distance;
+          " > safely_backfillable_profile_ids.json
+          npx --yes wrangler@latest d1 execute ffa-comparateur --remote --json --command "
+            SELECT distance, full_name, name_key, birth_year, sex, pb_sec, club, athlete_ffa_id
             FROM athletes
-            WHERE athlete_ffa_id IS NULL OR TRIM(athlete_ffa_id) = ''
-            ORDER BY distance, full_name, birth_year
-            LIMIT 1000;
-          " > missing_profile_identifiers_sample.json
+            WHERE name_key = 'BITTEROLF THOMAS'
+            ORDER BY distance;
+          " > bitterolf_profile_audit.json
       - name: Commit audit
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add cloudflare-prototype/profile_identifier_audit.json cloudflare-prototype/missing_profile_identifiers_sample.json
-          git diff --cached --quiet || git commit -m "Audit missing FFA profile identifiers"
+          git add cloudflare-prototype/profile_identifier_audit.json cloudflare-prototype/safely_backfillable_profile_ids.json cloudflare-prototype/bitterolf_profile_audit.json
+          git diff --cached --quiet || git commit -m "Refine FFA profile identifier audit"
           git push
