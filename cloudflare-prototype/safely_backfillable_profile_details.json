@@ -3,15 +3,27 @@
     "results": [
       {
         "distance": "10k",
-        "safely_backfillable": 1
+        "full_name": "DE CHERISEY Henry",
+        "birth_year": 2002,
+        "sex": "M",
+        "pb_sec": 2356,
+        "athlete_ffa_id": "3238713"
       },
       {
         "distance": "marathon",
-        "safely_backfillable": 1
+        "full_name": "DE CHERISEY Henry",
+        "birth_year": 2002,
+        "sex": "M",
+        "pb_sec": 12559,
+        "athlete_ffa_id": "3238713"
       },
       {
         "distance": "semi",
-        "safely_backfillable": 1
+        "full_name": "LEFEBVRE Valentine",
+        "birth_year": 1997,
+        "sex": "F",
+        "pb_sec": 6010,
+        "athlete_ffa_id": "3382427"
       }
     ],
     "success": true,
@@ -21,9 +33,9 @@
       "served_by_colo": "LHR",
       "served_by_primary": true,
       "timings": {
-        "sql_duration_ms": 8151.6991
+        "sql_duration_ms": 3388.7326
       },
-      "duration": 8151.6991,
+      "duration": 3388.7326,
       "changes": 0,
       "last_row_id": 0,
       "changed_db": false,

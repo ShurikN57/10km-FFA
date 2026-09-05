@@ -37,9 +37,9 @@
       "served_by_colo": "LHR",
       "served_by_primary": true,
       "timings": {
-        "sql_duration_ms": 5798.7127
+        "sql_duration_ms": 4990.4259
       },
-      "duration": 5798.7127,
+      "duration": 4990.4259,
       "changes": 0,
       "last_row_id": 0,
       "changed_db": false,
