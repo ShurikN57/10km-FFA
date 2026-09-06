@@ -160,9 +160,9 @@ export default {
         JOIN athletes a ON a.id = athlete_fts.rowid
         JOIN athlete_search_rank sr ON sr.athlete_id = a.id
         WHERE athlete_fts MATCH ? AND a.distance = ?
-        ORDER BY a.birth_year ASC, a.full_name ASC
+        ORDER BY CASE WHEN a.name_key = ? THEN 0 ELSE 1 END, a.birth_year ASC, a.full_name ASC
         LIMIT 100
-      `).bind(ftsQuery, distance);
+      `).bind(ftsQuery, distance, q);
       const res = await stmt.all();
       const rows = (res.results || []).map((row) => {
         const bounds = mode === 'category' ? categoryBounds(row.birth_year) : null;
