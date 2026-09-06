@@ -1,0 +1,32 @@
+name: Patch distance separators
+on:
+  push:
+    paths:
+      - 'tools/patch_distance_separators.py'
+      - '.github/workflows/patch_distance_separators.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply patch
+        run: python tools/patch_distance_separators.py
+      - name: Validate inline JavaScript
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          t=Path('mobile.html').read_text(encoding='utf-8')
+          scripts=re.findall(r'<script(?:\s[^>]*)?>(.*?)</script>',t,re.S)
+          Path('/tmp/mobile-inline.js').write_text('\n'.join(s for s in scripts if s.strip()),encoding='utf-8')
+          PY
+          node --check /tmp/mobile-inline.js
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add mobile.html
+          git commit -m "Add distance selector separators"
+          git push
