@@ -308,7 +308,7 @@ th{background:#141922}
               <label class="ffa-filter-field"><span>Région</span><select id="ffaFullLeague"><option value="">Toutes</option></select></label>
               <label class="ffa-filter-field"><span>Département</span><select id="ffaFullDepartment"><option value="">Tous</option></select></label>
               <label class="ffa-filter-field"><span>Club</span><select id="ffaFullClub"><option value="">Tous</option></select></label>
-              <label class="ffa-filter-field"><span>Année de performance</span><select id="ffaFullRaceYear"><option value="">Toutes</option></select></label>
+              <label class="ffa-filter-field"><span>Saison</span><select id="ffaFullRaceYear"><option value="">Toutes</option></select></label>
               <label class="ffa-filter-field"><span>Temps min</span><input id="ffaFullMinPb" class="ffa-time-input" type="text" inputmode="none" readonly aria-haspopup="dialog" placeholder="Ex. 30:00"></label>
               <label class="ffa-filter-field"><span>Temps max</span><input id="ffaFullMaxPb" class="ffa-time-input" type="text" inputmode="none" readonly aria-haspopup="dialog" placeholder="Ex. 35:00"></label>
             </div>
@@ -822,8 +822,7 @@ function populateFfaScopeOptions(){
   const activeDepartment=String($('ffaFullDepartment')?.value||'');
   const clubs=[...new Set(ffaScopeOptionRows.filter(row=>(!activeLeague||row.league===activeLeague)&&(!activeDepartment||row.department===activeDepartment)).map(row=>String(row.club||'').trim()).filter(value=>value&&!/^NL la veille/i.test(value)))].sort((a,b)=>a.localeCompare(b,'fr'));
   setFfaScopeSelect('ffaFullClub',clubs,'Tous');
-  const years=[...new Set(ffaScopeOptionRows.map(row=>Number(row.race_year)||0).filter(Boolean))].sort((a,b)=>b-a);
-  setFfaScopeSelect('ffaFullRaceYear',years,'Toutes');
+  setFfaScopeSelect('ffaFullRaceYear',[2024,2025,2026],'Toutes');
   syncFfaFilterUi();
 }
 async function loadFfaScopeOptions(){
@@ -939,7 +938,7 @@ async function renderFullFfaRanking(resetPage=false){
   const league=scopeReady?String($("ffaFullLeague").value||""):"";
   const department=scopeReady?String($("ffaFullDepartment").value||""):"";
   const club=scopeReady?String($("ffaFullClub").value||""):"";
-  const raceYear=scopeReady?String($("ffaFullRaceYear").value||""):"";
+  const seasonYear=String($("ffaFullRaceYear").value||"");
   const minPb=parsePbLimit($("ffaFullMinPb").value);
   const maxPb=parsePbLimit($("ffaFullMaxPb").value);
   const french=!!($("ffaFullFrench")&&$("ffaFullFrench").checked);
@@ -950,7 +949,7 @@ async function renderFullFfaRanking(resetPage=false){
   if(league) params.set("league",league);
   if(department) params.set("department",department);
   if(club) params.set("club",club);
-  if(raceYear) params.set("raceYear",raceYear);
+  if(seasonYear) params.set("seasonYear",seasonYear);
   if(french) params.set("french","1");
   if(year) params.set("year",year);
   if(minPb!=null) params.set("minPb",String(minPb));
@@ -968,7 +967,7 @@ async function renderFullFfaRanking(resetPage=false){
     ffaFullPage=apiPage-1;
     msg.textContent=total.toLocaleString("fr-FR")+" athlète"+(total>1?"s":"")+" · page "+apiPage+"/"+pages;
     const sortHeader=ffaFullSortHeader();
-    const plainFrenchRank=french&&!q&&!sex&&!cat&&!year&&!league&&!department&&!club&&!raceYear&&minPb==null&&maxPb==null&&(ffaFullSort==='rank'||ffaFullSort==='time');
+    const plainFrenchRank=french&&!q&&!sex&&!cat&&!year&&!league&&!department&&!club&&!seasonYear&&minPb==null&&maxPb==null&&(ffaFullSort==='rank'||ffaFullSort==='time');
     box.innerHTML=sortHeader+(rows.length ? rows.map((r,rowIndex)=>{
       const p={
         full_name:r.full_name||"",
