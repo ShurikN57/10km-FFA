@@ -277,7 +277,7 @@ export default {
         });
       }
 
-      if (scopedRanking) {
+      if (scopedRanking || frenchOnly) {
         const needsScopeTable = Boolean(league || department);
         const scopeWhere = ['a.distance = ?'];
         const scopeBinds = [distance];
@@ -293,6 +293,7 @@ export default {
         if (league) { scopeWhere.push('sc.league = ?'); scopeBinds.push(league); }
         if (department) { scopeWhere.push('sc.department = ?'); scopeBinds.push(department); }
         if (club) { scopeWhere.push('a.club = ?'); scopeBinds.push(club); }
+        if (frenchOnly) scopeWhere.push("a.full_name NOT GLOB '* ([A-Z][A-Z][A-Z])'");
         if (seasonYear) {
           scopeWhere.push("2000 + CAST(substr(a.pb_date, 7, 2) AS INTEGER) + CASE WHEN CAST(substr(a.pb_date, 4, 2) AS INTEGER) >= 9 THEN 1 ELSE 0 END = ?");
           scopeBinds.push(seasonYear);
@@ -300,7 +301,6 @@ export default {
 
         const postWhere = [];
         const postBinds = [];
-        if (frenchOnly) postWhere.push("full_name NOT GLOB '* ([A-Z][A-Z][A-Z])'");
         if (Number.isFinite(minPb) && minPb > 0) { postWhere.push('pb_sec >= ?'); postBinds.push(minPb); }
         if (Number.isFinite(maxPb) && maxPb > 0) { postWhere.push('pb_sec <= ?'); postBinds.push(maxPb); }
         if (ftsQuery) { postWhere.push('id IN (SELECT rowid FROM athlete_fts WHERE athlete_fts MATCH ?)'); postBinds.push(ftsQuery); }
