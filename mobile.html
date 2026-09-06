@@ -246,6 +246,8 @@ th{background:#141922}
 }
 
 
+.pwa-update-btn{display:none;width:100%;min-height:42px;margin:0 0 10px;border:1px solid #67a1ff!important;background:linear-gradient(180deg,#4c91ff,#3178e8)!important;color:#fff!important;border-radius:14px!important;font-size:13px!important;font-weight:850!important;box-shadow:0 7px 18px rgba(76,145,255,.22)}
+.pwa-update-btn.show{display:block}
 .distance-switch{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;margin:0 0 14px;padding:4px;background:rgba(25,30,39,.88);border:1px solid #3a4350;border-radius:18px;overflow:hidden}
 .distance-btn{position:relative;min-width:0;min-height:44px;border:0!important;background:transparent!important;color:#c8ced8!important;border-radius:13px!important;font-size:13px!important;font-weight:800!important;padding:8px 4px!important;white-space:nowrap}
 .distance-btn+ .distance-btn::before{content:"";position:absolute;left:0;top:9px;bottom:9px;width:1px;background:rgba(148,163,184,.24);box-shadow:0 0 1px rgba(255,255,255,.08)}
@@ -264,6 +266,7 @@ th{background:#141922}
 </head>
 <body>
 <div class="wrap">
+  <button type="button" id="pwaUpdateBtn" class="pwa-update-btn">↻ MAJ disponible</button>
   <div class="distance-switch" role="group" aria-label="Distance FFA">
     <button type="button" class="distance-btn" data-distance="5k">5 km</button>
     <button type="button" class="distance-btn active" data-distance="10k">10 km</button>
@@ -1507,7 +1510,44 @@ updateSortArrows();
 render();
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
-  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js?v=20260831g').catch(()=>{}));
+  window.addEventListener('load', async()=>{
+    const updateBtn=document.getElementById('pwaUpdateBtn');
+    let refreshing=false;
+    const showUpdate=()=>{ if(updateBtn) updateBtn.classList.add('show'); };
+    const hideUpdate=()=>{ if(updateBtn) updateBtn.classList.remove('show'); };
+    try{
+      const reg=await navigator.serviceWorker.register('./sw.js');
+      const watchWorker=worker=>{
+        if(!worker) return;
+        worker.addEventListener('statechange',()=>{
+          if(worker.state==='installed' && navigator.serviceWorker.controller) showUpdate();
+        });
+      };
+      if(reg.waiting && navigator.serviceWorker.controller) showUpdate();
+      reg.addEventListener('updatefound',()=>watchWorker(reg.installing));
+      if(updateBtn) updateBtn.addEventListener('click',()=>{
+        const worker=reg.waiting;
+        if(worker){
+          updateBtn.disabled=true;
+          updateBtn.textContent='Mise à jour…';
+          worker.postMessage({type:'SKIP_WAITING'});
+        }else{
+          reg.update().catch(()=>{});
+        }
+      });
+      navigator.serviceWorker.addEventListener('controllerchange',()=>{
+        if(refreshing) return;
+        refreshing=true;
+        hideUpdate();
+        location.reload();
+      });
+      // iOS peut laisser une PWA ouverte longtemps : contrôle au retour au premier plan
+      // et périodiquement, sans recharger l'application tant que l'utilisateur n'a pas choisi MAJ.
+      document.addEventListener('visibilitychange',()=>{ if(!document.hidden) reg.update().catch(()=>{}); });
+      setInterval(()=>reg.update().catch(()=>{}),60000);
+      reg.update().catch(()=>{});
+    }catch(e){}
+  });
 }
 </script>
 </body>

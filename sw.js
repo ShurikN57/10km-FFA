@@ -1,6 +1,11 @@
-const SHELL_CACHE='comparateur-ffa-shell-v9';
+const SHELL_CACHE='comparateur-ffa-shell-v10';
 
-self.addEventListener('install',e=>{self.skipWaiting()});
+self.addEventListener('install',()=>{});
+
+
+self.addEventListener('message',e=>{
+  if(e.data && e.data.type==='SKIP_WAITING') self.skipWaiting();
+});
 
 self.addEventListener('activate',e=>{
   e.waitUntil((async()=>{
