@@ -197,8 +197,8 @@ export default {
       const departmentRaw = String(url.searchParams.get('department') || '').trim().toUpperCase();
       const department = /^[A-Z0-9-]{1,5}$/.test(departmentRaw) ? departmentRaw : '';
       const club = String(url.searchParams.get('club') || '').trim().slice(0, 180);
-      const raceYearRaw = String(url.searchParams.get('raceYear') || '').trim();
-      const raceYear = /^20\d{2}$/.test(raceYearRaw) ? Number(raceYearRaw) : 0;
+      const seasonYearRaw = String(url.searchParams.get('seasonYear') || '').trim();
+      const seasonYear = /^(2024|2025|2026)$/.test(seasonYearRaw) ? Number(seasonYearRaw) : 0;
       const minPb = Number(url.searchParams.get('minPb') || 0);
       const maxPb = Number(url.searchParams.get('maxPb') || 0);
       const q = normalizeName(url.searchParams.get('q'));
@@ -210,7 +210,7 @@ export default {
       const sortRaw = String(url.searchParams.get('sort') || 'rank').toLowerCase();
       const sort = ['rank','name','time'].includes(sortRaw) ? sortRaw : 'rank';
       const dir = String(url.searchParams.get('dir') || 'asc').toLowerCase() === 'desc' ? 'DESC' : 'ASC';
-      const scopedRanking = Boolean(league || department || club || raceYear);
+      const scopedRanking = Boolean(league || department || club || seasonYear);
 
       const plainGeneral = !scopedRanking && !sex && !category && !year && !q && !frenchOnly &&
         !(Number.isFinite(minPb) && minPb > 0) &&
@@ -278,7 +278,7 @@ export default {
       }
 
       if (scopedRanking) {
-        const needsScopeTable = Boolean(league || department || raceYear);
+        const needsScopeTable = Boolean(league || department);
         const scopeWhere = ['a.distance = ?'];
         const scopeBinds = [distance];
         if (sex) { scopeWhere.push('a.sex = ?'); scopeBinds.push(sex); }
@@ -293,7 +293,10 @@ export default {
         if (league) { scopeWhere.push('sc.league = ?'); scopeBinds.push(league); }
         if (department) { scopeWhere.push('sc.department = ?'); scopeBinds.push(department); }
         if (club) { scopeWhere.push('a.club = ?'); scopeBinds.push(club); }
-        if (raceYear) { scopeWhere.push('sc.race_year = ?'); scopeBinds.push(raceYear); }
+        if (seasonYear) {
+          scopeWhere.push("2000 + CAST(substr(a.pb_date, 7, 2) AS INTEGER) + CASE WHEN CAST(substr(a.pb_date, 4, 2) AS INTEGER) >= 9 THEN 1 ELSE 0 END = ?");
+          scopeBinds.push(seasonYear);
+        }
 
         const postWhere = [];
         const postBinds = [];
