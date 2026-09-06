@@ -308,7 +308,7 @@ th{background:#141922}
               <label class="ffa-filter-field"><span>Région</span><select id="ffaFullLeague"><option value="">Toutes</option></select></label>
               <label class="ffa-filter-field"><span>Département</span><select id="ffaFullDepartment"><option value="">Tous</option></select></label>
               <label class="ffa-filter-field"><span>Club</span><select id="ffaFullClub"><option value="">Tous</option></select></label>
-              <label class="ffa-filter-field"><span>Saison</span><select id="ffaFullRaceYear"><option value="">Toutes</option></select></label>
+              <label class="ffa-filter-field"><span>Année de performance</span><select id="ffaFullRaceYear"><option value="">Toutes</option></select></label>
               <label class="ffa-filter-field"><span>Temps min</span><input id="ffaFullMinPb" class="ffa-time-input" type="text" inputmode="none" readonly aria-haspopup="dialog" placeholder="Ex. 30:00"></label>
               <label class="ffa-filter-field"><span>Temps max</span><input id="ffaFullMaxPb" class="ffa-time-input" type="text" inputmode="none" readonly aria-haspopup="dialog" placeholder="Ex. 35:00"></label>
             </div>
@@ -659,7 +659,7 @@ async function renderFfaAthleteSearch(){
       if(rankText) metaParts.push(`<span style="color:var(--accent);font-weight:700">${esc(rankText)}</span>`);
       const meta=metaParts.join(" · ");
       const action=url
-        ? `<a href="${esc(url)}" target="_blank" rel="noopener" style="color:var(--accent);font-weight:700;text-decoration:none;white-space:nowrap">Fiche FFA ↗</a>`
+        ? `<a href="${esc(url)}" style="color:var(--accent);font-weight:700;text-decoration:none;white-space:nowrap">Fiche FFA ↗</a>`
         : `<span class="small" style="white-space:nowrap">Pas de fiche FFA</span>`;
       return `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 11px;border-bottom:1px solid var(--line)"><div style="min-width:0"><div style="font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</div><div class="small">${meta}</div></div>${action}</div>`;
     }).join("");
@@ -968,7 +968,8 @@ async function renderFullFfaRanking(resetPage=false){
     ffaFullPage=apiPage-1;
     msg.textContent=total.toLocaleString("fr-FR")+" athlète"+(total>1?"s":"")+" · page "+apiPage+"/"+pages;
     const sortHeader=ffaFullSortHeader();
-    box.innerHTML=sortHeader+(rows.length ? rows.map(r=>{
+    const plainFrenchRank=french&&!q&&!sex&&!cat&&!year&&!league&&!department&&!club&&!raceYear&&minPb==null&&maxPb==null&&(ffaFullSort==='rank'||ffaFullSort==='time');
+    box.innerHTML=sortHeader+(rows.length ? rows.map((r,rowIndex)=>{
       const p={
         full_name:r.full_name||"",
         annee_naissance:r.birth_year||"",
@@ -980,11 +981,16 @@ async function renderFullFfaRanking(resetPage=false){
         club:r.club||"",
         athlete_ffa_id:r.athlete_ffa_id||""
       };
-      const rank=Number(r.rank)||0;
+      let rank=Number(r.rank)||0;
+      if(plainFrenchRank){
+        rank=ffaFullSortDir==='desc'
+          ? Math.max(1,total-(ffaFullPage*FFA_FULL_PAGE_SIZE)-rowIndex)
+          : (ffaFullPage*FFA_FULL_PAGE_SIZE)+rowIndex+1;
+      }
       const rankText=rank?rank.toLocaleString("fr-FR"):"—";
       const url=getFfaProfileUrl(p);
       const catText=currentFfaCategory(p);
-      const link=url ? `<a href="${esc(url)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:700">${esc(p.full_name||"")}</a>` : `<b>${esc(p.full_name||"")}</b>`;
+      const link=url ? `<a href="${esc(url)}" style="color:var(--accent);text-decoration:none;font-weight:700">${esc(p.full_name||"")}</a>` : `<b>${esc(p.full_name||"")}</b>`;
       const meta=[p.annee_naissance||"—",p.sexe||"",catText].filter(Boolean).join(" · ");
       const rankSize=rank>=100000?"12px":rank>=10000?"13px":"14px";
       return `<div style="display:grid;grid-template-columns:68px minmax(0,1fr) 72px;gap:6px;align-items:center;padding:9px 10px;border-bottom:1px solid var(--line)"><div style="font-weight:800;font-size:${rankSize};text-align:center;font-variant-numeric:tabular-nums;white-space:nowrap">${esc(rankText)}</div><div style="min-width:0"><div style="overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.18">${link}</div><div class="small">${esc(meta)}</div></div><div style="text-align:right;font-weight:800;white-space:nowrap">${esc(p.pb_chrono||"—")}</div></div>`;
@@ -1282,7 +1288,7 @@ function render() {
     const _ffaUrl = getFfaProfileUrl(p);
     const fullName = esc(x.nom+" "+x.prenom);
     const nameSpan = _ffaUrl
-      ? `<a href="${esc(_ffaUrl)}" target="_blank" rel="noopener" class="runner-name" style="color:var(--accent);font-weight:700;text-decoration:none" title="${fullName}">${fullName}</a>`
+      ? `<a href="${esc(_ffaUrl)}" class="runner-name" style="color:var(--accent);font-weight:700;text-decoration:none" title="${fullName}">${fullName}</a>`
       : `<b class="runner-name" title="${fullName}">${fullName}</b>`;
     return `<tr>
       <td>${esc(x.pos)}</td>
