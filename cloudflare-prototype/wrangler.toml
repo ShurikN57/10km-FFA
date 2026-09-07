@@ -3,6 +3,7 @@ main = "worker.js"
 compatibility_date = "2026-08-31"
 preview_urls = false
 # four-distance ranking and Europe/Paris category cutoff use precomputed D1 ranks
+# redeploy exact-name search priority
 
 [[d1_databases]]
 binding = "DB"
