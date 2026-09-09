@@ -1,0 +1,34 @@
+name: Bump 10k V3 mobile
+on:
+  push:
+    paths:
+      - 'tools/bump_10k_v3_mobile.py'
+      - '.github/workflows/bump_10k_v3_mobile.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply patch
+        run: python tools/bump_10k_v3_mobile.py
+      - name: Validate service worker
+        run: node --check sw.js
+      - name: Validate inline JavaScript
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          s=Path('mobile.html').read_text(encoding='utf-8')
+          scripts=re.findall(r'<script(?:\s[^>]*)?>(.*?)</script>',s,re.S)
+          Path('/tmp/mobile-inline.js').write_text('\n'.join(scripts),encoding='utf-8')
+          PY
+          node --check /tmp/mobile-inline.js
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add mobile.html sw.js
+          git commit -m "Bump PWA for 10k V3 base" || exit 0
+          git push
