@@ -1,4 +1,4 @@
-const SHELL_CACHE='comparateur-ffa-shell-v10';
+const SHELL_CACHE='comparateur-ffa-shell-v11';
 
 self.addEventListener('install',()=>{});
 
@@ -20,7 +20,7 @@ self.addEventListener('fetch',e=>{
   if(e.request.method!=='GET') return;
   const url=new URL(e.request.url);
 
-  if(url.pathname.endsWith('/ffa_base.json.gz') || url.pathname.endsWith('/ffa_5km_2024_2026.json.gz')){
+  if(url.pathname.endsWith('/ffa_base.json.gz') || url.pathname.endsWith('/ffa_5km_2024_2026.json.gz') || url.pathname.endsWith('/ffa_10km_2024_2026_compact.json.gz')){
     // Les bases FFA doivent toujours venir directement du réseau.
     // Ne pas les mettre en Cache Storage dans Safari/PWA : cela évite les
     // échecs mémoire et les réponses incomplètes sur iOS.
