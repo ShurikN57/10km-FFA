@@ -99,14 +99,29 @@ async function main() {
   assert.equal(await page.textContent('#sTotal'), '3001');
   assert.equal(await page.evaluate(() => location.hash), '', 'hash nettoyé après import');
 
-  // 6. Restaurer le dernier classement après rechargement
+  // 6. Userscript : lecture de la place sur des tableaux de type GoTiming
+  //    (colonne « Clt », ou colonne de place sans intitulé à côté des dossards).
+  const exposed = script.replace(/\}\)\(\);\s*$/, ';window.__domTableGoTiming = domTableGoTiming;})();');
+  for (const [label, head, rows] of [
+    ['Clt', '<tr><th>Clt</th><th>Doss.</th><th>Nom</th><th>Temps</th><th>Cat.</th></tr>', [['1', '412', 'DUPONT Jean', '0:35:00', 'M1H'], ['2', '87', 'MARTIN Paul', '0:35:10', 'SEH'], ['3', '9', 'PETIT Luc', '0:36:00', 'SEH']]],
+    ['sans intitulé', '<tr><th></th><th>Dossard</th><th>Nom</th><th>Temps</th></tr>', [['1', '412', 'DUPONT Jean', '0:35:00'], ['2', '87', 'MARTIN Paul', '0:35:10'], ['3', '9', 'PETIT Luc', '0:36:00'], ['4', '120', 'DURAND Max', '0:36:30']]]
+  ]) {
+    const tablePage = await browser.newPage();
+    await tablePage.setContent('<table>' + head + rows.map((r) => '<tr>' + r.map((c) => '<td>' + c + '</td>').join('') + '</tr>').join('') + '</table>');
+    await tablePage.addScriptTag({ content: exposed });
+    const got = await tablePage.evaluate(() => window.__domTableGoTiming().map((r) => r.rank + ' ' + r.name));
+    assert.deepEqual(got, rows.map((r) => r[0] + ' ' + r[2]), 'places lues (' + label + ')');
+    await tablePage.close();
+  }
+
+  // 7. Restaurer le dernier classement après rechargement
   await page.goto(base + '/mobile.html');
   await page.click('[data-app-tab="analyse"]');
   await page.click('#restoreBtn');
   await page.waitForFunction(() => document.getElementById('sTotal').textContent === '3001');
 
   assert.deepEqual(errors, [], 'aucune erreur JavaScript');
-  console.log('OK — e2e : recherche, classement, filtres, distances, import, import compressé de 3001 coureurs, restauration (' + api.length + ' appels API simulés)');
+  console.log('OK — e2e : recherche, classement, filtres, distances, import, import compressé de 3001 coureurs, places GoTiming, restauration (' + api.length + ' appels API simulés)');
   await browser.close();
   server.close();
 }

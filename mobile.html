@@ -1159,7 +1159,7 @@ function runPasteAnalysis(){
   if(!parsed.length) parsed=parsePlainText(text);
   if(!parsed.length && /<table/i.test(text)) parsed=parseHTML(text);
 
-  race=parsed;
+  race=withDefaultPositions(parsed);
   $("raceMsg").textContent=parsed.length
     ? parsed.length+" participants détectés ("+source+")."
     : "Aucun participant reconnu.";
@@ -1290,7 +1290,7 @@ $("paste").addEventListener("input", ()=>{
       let source=parsed.length ? "UTMB" : "texte";
       if(!parsed.length) parsed=parsePlainText(text);
       if(!parsed.length && /<table/i.test(text)) parsed=parseHTML(text);
-      race=parsed;
+      race=withDefaultPositions(parsed);
       result=[];
       $("raceMsg").textContent=parsed.length
         ? parsed.length+" participants détectés ("+source+"). Chargement des correspondances FFA…"
