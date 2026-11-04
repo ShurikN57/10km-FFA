@@ -354,6 +354,13 @@ function parsePlainText(text) {
   return out;
 }
 
+// Si le classement importé n'a aucune place (colonne non reconnue sur le site
+// d'origine), on numérote dans l'ordre du classement, qui est l'ordre d'arrivée.
+function withDefaultPositions(race) {
+  if(!race.length || race.some(r => clean(r.pos))) return race;
+  return race.map((r,i) => ({...r, pos:String(i+1)}));
+}
+
 function preferFfaProfile(a,b){
   const pa=Number(a?.pb_sec ?? Infinity), pb=Number(b?.pb_sec ?? Infinity);
   if(pa!==pb) return pa-pb;

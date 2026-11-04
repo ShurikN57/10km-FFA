@@ -177,3 +177,11 @@ test('catégories calées sur la dernière saison classée dans D1', () => {
   assert.equal(core.ffaCategorySeasonYear(new Date('2027-10-01T12:00:00Z')), 2027);
   assert.equal(core.ffaCategorySeasonYear(new Date('2030-01-01T12:00:00Z')), 2027);
 });
+
+test('withDefaultPositions numérote seulement si aucune place n\'est connue', () => {
+  const sans = core.withDefaultPositions([{ pos: '', nom: 'A' }, { pos: '', nom: 'B' }]);
+  assert.deepEqual(sans.map((r) => r.pos), ['1', '2']);
+  const avec = core.withDefaultPositions([{ pos: '5', nom: 'A' }, { pos: '', nom: 'B' }]);
+  assert.deepEqual(avec.map((r) => r.pos), ['5', '']);
+  assert.deepEqual(core.withDefaultPositions([]), []);
+});

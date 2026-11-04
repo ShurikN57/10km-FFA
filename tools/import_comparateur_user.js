@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Importer vers Comparateur 10km
 // @namespace    comparateur-10km-ffa
-// @version      1.4
+// @version      1.5
 // @description  Collecte un classement GoTiming, UTMB ou ACN Timing et l'envoie vers RP.
 // @match        https://*.gotiming.fr/*
 // @match        https://gotiming.fr/*
@@ -116,6 +116,25 @@
   }
 
   // ---------- GoTiming ----------
+  // Colonne de classement sans intitulé reconnu : celle dont les premières
+  // valeurs valent 1, 2, 3… (un dossard, lui, n'est pas une suite qui part de 1).
+  function guessRankColumn(rows, skip) {
+    var sample = rows.slice(0, 8).map(function (tr) {
+      return [].slice.call(tr.children).map(function (c) { return C(c.textContent); });
+    }).filter(function (cells) { return cells.length; });
+    if (sample.length < 3) return -1;
+    var width = Math.max.apply(null, sample.map(function (cells) { return cells.length; }));
+    for (var col = 0; col < width; col++) {
+      if (skip.indexOf(col) >= 0) continue;
+      var ok = true;
+      for (var i = 0; i < sample.length && ok; i++) {
+        var m = (sample[i][col] || '').match(/^(\d{1,5})(?:\.|er|e|ème)?$/i);
+        if (!m || (i === 0 ? Number(m[1]) !== 1 : Number(m[1]) < Number((sample[i - 1][col] || '').match(/\d+/)[0]))) ok = false;
+      }
+      if (ok) return col;
+    }
+    return -1;
+  }
   function domTableGoTiming() {
     var tables = [].slice.call(document.querySelectorAll('table'));
     var best = [];
@@ -135,18 +154,20 @@
         var hh = headers[h];
         if (idxName < 0 && /NOM|ATHLETE|COUREUR|NAME/.test(hh)) idxName = h;
         if (idxTime < 0 && /TEMPS|CHRONO|RESULTAT|TIME/.test(hh)) idxTime = h;
-        if (idxRank < 0 && /PLACE|POS|RANG|CLASSEMENT/.test(hh)) idxRank = h;
+        if (idxRank < 0 && (/PLACE|POS|RANG|CLASSEMENT/.test(hh) || /^(CLT|CL|CLA|CLAS|CLASST|RG|RK|RANK|#|N°|NO)\.?$/.test(hh))) idxRank = h;
         if (idxSex < 0 && /SEXE|GENRE|^SEX$/.test(hh)) idxSex = h;
         if (idxCat < 0 && /^CAT/.test(hh)) idxCat = h;
       }
       if (idxName < 0 || idxTime < 0) continue;
+      if (idxRank < 0) idxRank = guessRankColumn(trs.slice(headerRow + 1), [idxName, idxTime]);
       var out = [];
       for (var r = headerRow + 1; r < trs.length; r++) {
         var tds = [].slice.call(trs[r].children).filter(function (c) { return c.tagName === 'TD' || c.tagName === 'TH'; }).map(function (c) { return C(c.textContent); });
         if (!tds.length) continue;
         var name = tds[idxName] || '', time = tds[idxTime] || '';
         if (!name || !time) continue;
-        out.push({ rank: tds[idxRank] || '', time: time, name: name, sex: idxSex >= 0 ? (tds[idxSex] || '') : '', category: idxCat >= 0 ? (tds[idxCat] || '') : '', uri: '', nationality: '', score: '' });
+        var rankCell = idxRank >= 0 ? (tds[idxRank] || '').match(/\d+/) : null;
+        out.push({ rank: rankCell ? rankCell[0] : '', time: time, name: name, sex: idxSex >= 0 ? (tds[idxSex] || '') : '', category: idxCat >= 0 ? (tds[idxCat] || '') : '', uri: '', nationality: '', score: '' });
       }
       if (out.length > best.length) best = out;
     }
