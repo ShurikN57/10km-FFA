@@ -1,0 +1,4 @@
+node_modules/
+# Fichier généré par api/prepare_import.py (plusieurs centaines de Mo)
+api/ffa_d1_import.sql
+.DS_Store

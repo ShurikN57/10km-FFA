@@ -1,16 +1,16 @@
 // Test d'intégration : exécute les vraies requêtes SQL du Worker sur une base
 // SQLite en mémoire construite avec le schéma de production
-// (cloudflare-prototype/schema_production.sql). Détecte les fautes de colonnes,
+// (api/schema.sql). Détecte les fautes de colonnes,
 // de jointures ou de syntaxe que la base simulée de worker.test.mjs ne voit pas.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
-import worker from '../cloudflare-prototype/worker.js';
+import worker from '../api/worker.js';
 
 const ORIGIN = 'https://shurikn57.github.io';
 const db = new DatabaseSync(':memory:');
-db.exec(fs.readFileSync(new URL('../cloudflare-prototype/schema_production.sql', import.meta.url), 'utf8'));
+db.exec(fs.readFileSync(new URL('../api/schema.sql', import.meta.url), 'utf8'));
 
 // Adaptateur minimal reproduisant l'API D1 utilisée par le Worker.
 const DB = {

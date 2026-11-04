@@ -3,6 +3,7 @@
   "private": true,
   "description": "RP — comparateur de performances course à pied / bilans FFA",
   "scripts": {
-    "test": "node --no-warnings --test tests/core.test.js tests/worker.test.mjs tests/worker-sql.test.mjs"
+    "test": "node --no-warnings --test tests/core.test.js tests/worker.test.mjs tests/worker-sql.test.mjs",
+    "test:e2e": "node tests/e2e/app.e2e.cjs"
   }
 }

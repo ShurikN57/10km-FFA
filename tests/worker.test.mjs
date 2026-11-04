@@ -1,7 +1,7 @@
 // Tests du Worker avec une base D1 simulée (aucun accès réseau).
 import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
-import worker from '../cloudflare-prototype/worker.js';
+import worker from '../api/worker.js';
 
 const ORIGIN = 'https://shurikn57.github.io';
 

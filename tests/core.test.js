@@ -102,21 +102,20 @@ test('utmbCategoryToYearRange', () => {
   assert.equal(core.utmbCategoryToYearRange('V1'), null);
 });
 
-test('parseCSV détecte le séparateur et gère les guillemets', () => {
-  const rows = core.parseCSV('﻿Place;Nom;Temps\n1;"DUPONT; Jean";33:05\n2;MARTIN Paul;34:10\n');
-  assert.equal(rows.length, 2);
-  assert.equal(rows[0].NOM, 'DUPONT; Jean');
-  assert.equal(rows[1].TEMPS, '34:10');
-  const tab = core.parseCSV('Nom\tTemps\nDUPONT Jean\t33:05');
-  assert.equal(tab[0].NOM, 'DUPONT Jean');
-});
-
 test('rowsToRace découpe la colonne Nom GoTiming', () => {
-  const race = core.rowsToRace(core.parseCSV('Place;Nom;Temps;Cat\n1;DUPONT Jean;33:05;M1H'));
+  const race = core.rowsToRace([{ PLACE: '1', NOM: 'DUPONT Jean', TEMPS: '33:05', CAT: 'M1H' }]);
   assert.equal(race.length, 1);
   assert.equal(race[0].nom, 'DUPONT');
   assert.equal(race[0].prenom, 'Jean');
   assert.ok(race[0].anneeRange);
+});
+
+test('parsePlainText lit le format du userscript (place, nom, temps, catégorie)', () => {
+  const race = core.parsePlainText('12  DUPONT Jean  0:42:12  M1H\n13  MARTIN Paul Henri  43:05\nligne sans temps');
+  assert.equal(race.length, 2);
+  assert.deepEqual([race[0].pos, race[0].nom, race[0].prenom, race[0].temps, race[0].cat], ['12', 'DUPONT', 'Jean', '0:42:12', 'M1H']);
+  assert.ok(race[0].anneeRange);
+  assert.deepEqual([race[1].nom, race[1].prenom, race[1].temps], ['MARTIN', 'Paul Henri', '43:05']);
 });
 
 test('esc échappe le HTML', () => {

@@ -6,10 +6,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 OUT = Path(__file__).with_name('ffa_d1_import.sql')
 SOURCES = [
-    ('5k', ROOT / 'ffa_5km_2024_2026.json.gz'),
-    ('10k', ROOT / 'ffa_base.json.gz'),
-    ('semi', ROOT / 'ffa_semi_2024_2026.json.gz'),
-    ('marathon', ROOT / 'ffa_marathon_2024_2026.json.gz'),
+    ('5k', ROOT / 'data' / 'ffa_5km_2024_2026.json.gz'),
+    ('10k', ROOT / 'data' / 'ffa_10km_2024_2026.json.gz'),
+    ('semi', ROOT / 'data' / 'ffa_semi_2024_2026.json.gz'),
+    ('marathon', ROOT / 'data' / 'ffa_marathon_2024_2026.json.gz'),
 ]
 
 # Profils officiellement vérifiés mais non liés dans les bilans FFA
@@ -109,4 +109,4 @@ with OUT.open('w', encoding='utf-8', newline='\n') as out:
 print(f'{count:,} rows written to {OUT}')
 print(f'{backfilled:,} missing profile IDs propagated safely across distances')
 print(f'{overridden:,} verified profile ID overrides applied')
-print('Import with: npx wrangler d1 execute ffa-comparateur --remote --file cloudflare-prototype/ffa_d1_import.sql')
+print('Import with: npx wrangler d1 execute ffa-comparateur --remote --file api/ffa_d1_import.sql')
