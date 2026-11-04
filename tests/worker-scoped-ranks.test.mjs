@@ -32,6 +32,7 @@ for (let i = 0; i < 600; i++) {
   };
   const { lastInsertRowid: id } = insA.run('10k', p.name, p.name, p.birth, p.sex, p.pb, 'C', p.date || null, 'Club', 'X' + i);
   insS.run(id, '10k', p.league, p.dept, 2025);
+  db.prepare('INSERT INTO athlete_fts(rowid,name_key,distance) VALUES(?,?,?)').run(id, p.name, '10k');
   people.push({ ...p, id: Number(id) });
 }
 
@@ -46,9 +47,12 @@ function reference(params) {
     (!params.seasonYear || season(p.date) === params.seasonYear) &&
     (!params.french || french(p.name)));
   const withRank = scope.map((p) => ({ ...p, rank: 1 + scope.filter((o) => o.pb < p.pb).length }));
-  const filtered = withRank.filter((p) => (!params.minPb || p.pb >= params.minPb) && (!params.maxPb || p.pb <= params.maxPb));
+  const filtered = withRank.filter((p) => (!params.minPb || p.pb >= params.minPb) && (!params.maxPb || p.pb <= params.maxPb) &&
+    (!params.q || p.name.includes(params.q)));
   const desc = params.dir === 'desc';
-  filtered.sort((a, b) => (desc ? b.pb - a.pb : a.pb - b.pb) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0) || a.id - b.id);
+  const byName = (a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+  if (params.sort === 'name') filtered.sort((a, b) => (desc ? -byName(a, b) : byName(a, b)) || a.pb - b.pb || a.id - b.id);
+  else filtered.sort((a, b) => (desc ? b.pb - a.pb : a.pb - b.pb) || byName(a, b) || a.id - b.id);
   const page = params.page || 1;
   return { total: filtered.length, rows: filtered.slice((page - 1) * 100, page * 100).map((p) => [p.name, p.pb, p.rank]) };
 }
@@ -57,8 +61,9 @@ const combos = [];
 for (const scope of [{ seasonYear: 2025 }, { seasonYear: 2024, sex: 'F' }, { league: 'PCA' }, { department: '011', sex: 'M' }, { french: 1, sex: 'F' }, { french: 1, seasonYear: 2026 }, { league: 'I-F', seasonYear: 2025, sex: 'M' }])
   for (const dir of ['asc', 'desc'])
     for (const range of [{}, { minPb: 1900 }, { maxPb: 1950 }, { minPb: 1850, maxPb: 2000 }])
-      for (const page of [1, 2])
-        combos.push({ ...scope, ...range, dir, page });
+      for (const extra of [{}, { sort: 'name' }, { q: 'NOM1' }, { q: 'P1', sort: 'name' }])
+        for (const page of [1, 2])
+          combos.push({ ...scope, ...range, ...extra, dir, page });
 
 test(`rangs par périmètre identiques à la référence (${combos.length} combinaisons)`, async () => {
   for (const params of combos) {

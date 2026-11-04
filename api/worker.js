@@ -104,43 +104,6 @@ const MAX_PAGE = 10000;
 // 01/09/N-1 au 31/08/N. Doit rester identique à l'expression des index
 // idx_athletes_season_pb et idx_athletes_sex_season_pb (api/schema.sql).
 const SEASON_SQL = '(2000 + CAST(substr(a.pb_date, 7, 2) AS INTEGER) + (CAST(substr(a.pb_date, 4, 2) AS INTEGER) >= 9))';
-
-// Rangs d'une page triée par temps, à partir des comptages renvoyés par la
-// requête (voir le classement par périmètre) :
-//   c_lt   = athlètes du périmètre strictement plus rapides que le temps minimal de la page
-//   c_le   = idem, temps égal inclus (ordre décroissant)
-//   c_base = athlètes du périmètre sous le temps minimal du filtre (ordre croissant)
-// Le rang est celui de RANK() : 1 + nombre d'athlètes strictement plus rapides.
-function scopedRanks(rows, { desc, offset }) {
-  if (!rows.length) return rows;
-  const cLt = Number(rows[0].c_lt || 0);
-  if (!desc) {
-    const base = Number(rows[0].c_base || 0);
-    let rank = 0;
-    return rows.map((row, i) => {
-      if (i === 0) rank = 1 + cLt;
-      else if (row.pb_sec !== rows[i - 1].pb_sec) rank = 1 + base + offset + i;
-      return { ...row, rank };
-    });
-  }
-  // Ordre décroissant : le temps minimal est en fin de page.
-  const cLe = Number(rows[0].c_le || 0);
-  const minPb = rows[rows.length - 1].pb_sec;
-  let lastGroupStart = rows.length - 1;
-  while (lastGroupStart > 0 && rows[lastGroupStart - 1].pb_sec === minPb) lastGroupStart--;
-  const out = new Array(rows.length);
-  let i = 0;
-  while (i < rows.length) {
-    let end = i;
-    while (end + 1 < rows.length && rows[end + 1].pb_sec === rows[i].pb_sec) end++;
-    // Plus rapides que ce groupe : ceux sous ou au temps minimal (c_le), plus les
-    // lignes de la page situées entre ce groupe et le dernier groupe.
-    const rank = rows[i].pb_sec === minPb ? 1 + cLt : 1 + cLe + (lastGroupStart - end - 1);
-    for (let k = i; k <= end; k++) out[k] = { ...rows[k], rank };
-    i = end + 1;
-  }
-  return out;
-}
 // Part de la distance au-delà de laquelle une catégorie est parcourue par temps
 // (mesuré sur la base complète : gain jusqu'à ×90 au-dessus, perte en dessous).
 const LARGE_CATEGORY_SHARE = 0.04;
@@ -415,95 +378,63 @@ async function handle(request, env) {
           scopeBinds.push(seasonYear);
         }
 
-        const postWhere = [];
-        const postBinds = [];
-        if (Number.isFinite(minPb) && minPb > 0) { postWhere.push('pb_sec >= ?'); postBinds.push(minPb); }
-        if (Number.isFinite(maxPb) && maxPb > 0) { postWhere.push('pb_sec <= ?'); postBinds.push(maxPb); }
-        if (ftsQuery) { postWhere.push('id IN (SELECT rowid FROM athlete_fts WHERE athlete_fts MATCH ?)'); postBinds.push(ftsQuery); }
-        else if (q) { postWhere.push('name_key LIKE ?'); postBinds.push(`%${q}%`); }
-
         const scopeFrom = needsScopeTable
           // CROSS JOIN : partir de l'index ligue/département d'athlete_scope
           // (mesuré ×9 plus rapide que de parcourir toute la distance).
           ? 'FROM athlete_scope sc CROSS JOIN athletes a ON a.id = sc.athlete_id'
           : 'FROM athletes a';
+        const scopeSql = scopeWhere.join(' AND ');
 
-        if (sort !== 'name' && !q) {
-          // Tri par rang ou par temps : au lieu de calculer RANK() sur tout le
-          // périmètre, on lit seulement la page (index par temps) et on déduit les
-          // rangs exacts de 1 à 3 comptages sur l'index :
-          //   rang(x) = 1 + nombre d'athlètes du périmètre plus rapides que x.
-          const scopeSql = scopeWhere.join(' AND ');
-          const rangeWhere = [];
-          const rangeBinds = [];
-          const hasMin = Number.isFinite(minPb) && minPb > 0;
-          const hasMax = Number.isFinite(maxPb) && maxPb > 0;
-          if (hasMin) { rangeWhere.push('a.pb_sec >= ?'); rangeBinds.push(minPb); }
-          if (hasMax) { rangeWhere.push('a.pb_sec <= ?'); rangeBinds.push(maxPb); }
-          const filteredSql = [scopeSql, ...rangeWhere].join(' AND ');
-          const desc = dir === 'DESC';
-          const counts = [`(SELECT COUNT(*) ${scopeFrom} WHERE ${scopeSql} AND a.pb_sec < (SELECT MIN(pb_sec) FROM page)) AS c_lt`];
-          const countBinds = [...scopeBinds];
-          if (desc) {
-            counts.push(`(SELECT COUNT(*) ${scopeFrom} WHERE ${scopeSql} AND a.pb_sec <= (SELECT MIN(pb_sec) FROM page)) AS c_le`);
-            countBinds.push(...scopeBinds);
-          } else if (hasMin) {
-            counts.push(`(SELECT COUNT(*) ${scopeFrom} WHERE ${scopeSql} AND a.pb_sec < ?) AS c_base`);
-            countBinds.push(...scopeBinds, minPb);
-          }
-          const pageSql = `
-            WITH page AS (
-              SELECT a.id,a.full_name,a.birth_year,a.sex,a.pb_sec,a.pb_course,a.pb_date,a.club,a.athlete_ffa_id
-              ${scopeFrom}
-              WHERE ${filteredSql}
-              ORDER BY a.pb_sec ${dir}, a.full_name ASC, a.id ASC
-              LIMIT ? OFFSET ?
-            )
-            SELECT page.*, ${counts.join(', ')}
-            FROM page
-            ORDER BY page.pb_sec ${dir}, page.full_name ASC, page.id ASC`;
-          const [pageRes, totalRes] = await env.DB.batch([
-            env.DB.prepare(pageSql).bind(...scopeBinds, ...rangeBinds, pageSize, offset, ...countBinds),
-            env.DB.prepare(`SELECT COUNT(*) AS n ${scopeFrom} WHERE ${filteredSql}`).bind(...scopeBinds, ...rangeBinds)
-          ]);
-          const raw = pageRes?.results || [];
-          const total = Number(totalRes?.results?.[0]?.n || 0);
-          const rows = scopedRanks(raw, { desc, offset }).map(({ id, c_lt, c_le, c_base, ...row }) => row);
-          const pages = Math.max(1, Math.ceil(total / pageSize));
-          return json(request, { page: Math.min(page, pages), pageSize, total, pages, rows });
-        }
-
+        // Filtres appliqués après le classement : ils réduisent la liste mais ne
+        // changent pas le rang (rang dans le périmètre complet).
+        const postWhere = [];
+        const postBinds = [];
+        if (Number.isFinite(minPb) && minPb > 0) { postWhere.push('a.pb_sec >= ?'); postBinds.push(minPb); }
+        if (Number.isFinite(maxPb) && maxPb > 0) { postWhere.push('a.pb_sec <= ?'); postBinds.push(maxPb); }
+        if (ftsQuery) { postWhere.push('a.id IN (SELECT rowid FROM athlete_fts WHERE athlete_fts MATCH ?)'); postBinds.push(ftsQuery); }
+        else if (q) { postWhere.push('a.name_key LIKE ?'); postBinds.push(`%${q}%`); }
+        const filteredSql = [scopeSql, ...postWhere].join(' AND ');
         const scopedOrder = sort === 'name'
-          ? `full_name ${dir}, pb_sec ASC, id ASC`
-          : sort === 'time'
-            ? `pb_sec ${dir}, full_name ASC, id ASC`
-            : `rank ${dir}, pb_sec ${dir}, full_name ASC, id ASC`;
-        const sql = `
-          WITH scoped AS (
-            SELECT a.id,a.full_name,a.name_key,a.birth_year,a.sex,a.pb_sec,a.pb_course,a.pb_date,a.club,a.athlete_ffa_id,
-                   RANK() OVER (ORDER BY a.pb_sec ASC) AS rank
+          ? `a.full_name ${dir}, a.pb_sec ASC, a.id ASC`
+          : `a.pb_sec ${dir}, a.full_name ASC, a.id ASC`;
+
+        // 1) La page et le total, sans calculer le rang de tout le périmètre.
+        const [pageRes, totalRes] = await env.DB.batch([
+          env.DB.prepare(`
+            SELECT a.full_name,a.birth_year,a.sex,a.pb_sec,a.pb_course,a.pb_date,a.club,a.athlete_ffa_id
             ${scopeFrom}
-            WHERE ${scopeWhere.join(' AND ')}
-          ), filtered AS (
-            SELECT * FROM scoped ${postWhere.length ? `WHERE ${postWhere.join(' AND ')}` : ''}
-          )
-          SELECT full_name,birth_year,sex,pb_sec,pb_course,pb_date,club,athlete_ffa_id,rank,
-                 COUNT(*) OVER () AS filtered_total
-          FROM filtered
-          ORDER BY ${scopedOrder}
-          LIMIT ? OFFSET ?`;
-        const res = await env.DB.prepare(sql).bind(...scopeBinds, ...postBinds, pageSize, offset).all();
-        const rawRows = res.results || [];
-        const total = Number(rawRows[0]?.filtered_total || 0);
-        const rows = rawRows.map(({ filtered_total, ...row }) => row);
+            WHERE ${filteredSql}
+            ORDER BY ${scopedOrder}
+            LIMIT ? OFFSET ?`).bind(...scopeBinds, ...postBinds, pageSize, offset),
+          env.DB.prepare(`SELECT COUNT(*) AS n ${scopeFrom} WHERE ${filteredSql}`).bind(...scopeBinds, ...postBinds)
+        ]);
+        const pageRows = pageRes?.results || [];
+        const total = Number(totalRes?.results?.[0]?.n || 0);
+
+        // 2) Rang des seuls temps présents sur la page, comme RANK() :
+        //    rang = 1 + nombre d'athlètes du périmètre strictement plus rapides.
+        //    Comptage groupé par temps sur l'index, limité au temps le plus lent
+        //    de la page, puis somme cumulée.
+        let rankByPb = new Map();
+        if (pageRows.length) {
+          const pagePbs = [...new Set(pageRows.map((r) => Number(r.pb_sec)))];
+          const maxPagePb = Math.max(...pagePbs);
+          const rankRes = await env.DB.prepare(`
+            WITH h AS (
+              SELECT a.pb_sec AS pb, COUNT(*) AS n
+              ${scopeFrom}
+              WHERE ${scopeSql} AND a.pb_sec <= ?
+              GROUP BY a.pb_sec
+            ), c AS (
+              SELECT pb, SUM(n) OVER (ORDER BY pb ROWS UNBOUNDED PRECEDING) - n AS faster FROM h
+            )
+            SELECT pb, faster FROM c WHERE pb IN (SELECT value FROM json_each(?))`)
+            .bind(...scopeBinds, maxPagePb, JSON.stringify(pagePbs)).all();
+          rankByPb = new Map((rankRes?.results || []).map((r) => [Number(r.pb), 1 + Number(r.faster)]));
+        }
+        const rows = pageRows.map((row) => ({ ...row, rank: rankByPb.get(Number(row.pb_sec)) ?? null }));
         const pages = Math.max(1, Math.ceil(total / pageSize));
-        return json(request, {
-          page: Math.min(page, pages),
-          pageSize,
-          total,
-          pages,
-          rows
-        });
+        return json(request, { page: Math.min(page, pages), pageSize, total, pages, rows });
       }
 
       const where = ['a.distance = ?'];
