@@ -41,7 +41,8 @@ puis ouvrir <http://localhost:8000/mobile.html>.
 
 ## Déploiement
 
-- **Front** : GitHub Pages, à chaque push sur `main`. Après une modification de `mobile.html` ou `core.js`, incrémenter `SHELL_CACHE` dans `sw.js` pour que les PWA installées proposent la mise à jour.
+- **Front** : GitHub Pages (« Deploy from a branch », `main`).
+  **À chaque modification de l'app** (`mobile.html`, `core.js`, `index.html`, manifeste, icônes), incrémenter `SHELL_CACHE` dans `sw.js`, par exemple `comparateur-ffa-shell-v14` → `v15`. C'est ce changement de `sw.js` qui fait apparaître le bouton « ↻ MAJ disponible » sur les téléphones. Sans lui, une PWA restée ouverte en arrière-plan sur iPhone garde l'ancienne version. La CI fait échouer une PR qui modifie l'app sans incrémenter `SHELL_CACHE`.
 - **API** : le workflow `deploy-cloudflare-worker.yml` lance les tests puis déploie le Worker quand `cloudflare-prototype/worker.js` ou `wrangler.toml` change sur `main`.
 
 ## Maintenance saisonnière
