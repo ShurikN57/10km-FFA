@@ -1171,6 +1171,7 @@ function clearLastPaste(){
   }catch(e){}
 }
 
+const MATCH_CHUNK=1000; // doit rester ≤ à la limite de /match dans worker.js
 async function matchRaceWithApi(source="texte"){
   const token=++analysisMatchToken;
   result=[];
@@ -1184,16 +1185,25 @@ async function matchRaceWithApi(source="texte"){
 
   $("raceMsg").textContent=race.length+" participants détectés ("+source+"). Recherche des correspondances FFA…";
   try{
-    const response=await fetch(FFA_API+"/match?distance="+encodeURIComponent(currentDistance),{
-      method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({names})
-    });
-    if(!response.ok) throw new Error("HTTP "+response.status);
-    const data=await response.json();
-    if(token!==analysisMatchToken) return;
+    // L'API accepte au plus MATCH_CHUNK noms par requête (2 noms par coureur) :
+    // au-delà, les grosses courses sont envoyées en plusieurs paquets.
+    const apiRows=[];
+    for(let i=0;i<names.length;i+=MATCH_CHUNK){
+      if(names.length>MATCH_CHUNK){
+        $("raceMsg").textContent=race.length+" participants détectés ("+source+"). Recherche des correspondances FFA… "+Math.min(100,Math.round(i/names.length*100))+" %";
+      }
+      const response=await fetch(FFA_API+"/match?distance="+encodeURIComponent(currentDistance),{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({names:names.slice(i,i+MATCH_CHUNK)})
+      });
+      if(!response.ok) throw new Error("HTTP "+response.status);
+      const data=await response.json();
+      if(token!==analysisMatchToken) return;
+      if(Array.isArray(data.rows)) apiRows.push(...data.rows);
+    }
 
-    const candidates=(Array.isArray(data.rows)?data.rows:[]).map(row=>({
+    const candidates=apiRows.map(row=>({
       full_name:row.full_name||"",
       name_key:nameKey(row.full_name||""),
       annee_naissance:row.birth_year||"",

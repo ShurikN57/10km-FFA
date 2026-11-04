@@ -31,16 +31,27 @@ Réponses d'erreur : `400` (paramètre invalide), `404`, `429` (limite de débit
 
 ## Schéma de la base
 
-En plus de `athletes`, le Worker utilise des tables précalculées qui **ne sont pas encore versionnées** dans ce dépôt :
-`athlete_fts` (FTS5), `athlete_search_rank`, `athlete_general_rank`, `athlete_french_rank`, `athlete_scope`, `athlete_rank_year`, `athlete_rank_cat_before`, `athlete_rank_cat_after`, `ffa_scope_options`, `ffa_distance_stats`, `ffa_french_stats`.
+- `schema_production.sql` : **schéma complet de production**, extrait de D1 le 2026-11-04, avec une description de chaque table. Il sert aussi aux tests d'intégration (`tests/worker-sql.test.mjs`), qui exécutent toutes les requêtes du Worker sur une base SQLite construite avec ce schéma.
+- `schema.sql` : table `athletes` seule (prototype d'origine).
 
-Pour récupérer le schéma réel depuis la base de production et le versionner :
+| Table | Contenu |
+|---|---|
+| `athletes` | Un profil par athlète et par distance (≈ 1,44 million de lignes, ~1,1 Go). |
+| `athlete_fts` | Recherche plein texte (trigrammes) sur `name_key`. |
+| `athlete_general_rank` / `athlete_french_rank` | Rang général par distance (tous / sans nationalité étrangère). |
+| `athlete_search_rank` | Rangs général, par sexe et par sexe + catégorie (saisons 2026 et 2027). |
+| `athlete_rank_cat_before` / `_after` | Rang par catégorie tous sexes (saisons 2026 / 2027). |
+| `athlete_rank_year` | Rang par année de naissance (et sexe). |
+| `athlete_scope`, `ffa_scope_options` | Ligue, département, club, année : filtres « périmètre ». |
+| `ffa_distance_stats`, `ffa_french_stats` | Totaux par distance. |
 
-```bash
-npx wrangler d1 export ffa-comparateur --remote --no-data --output schema.full.sql
+**Toujours manquant :** les requêtes SQL qui remplissent les tables de rang. Elles sont indispensables pour recalculer les rangs ou réimporter les données.
+
+Pour comparer avec la production, extraire de nouveau le schéma (en lecture seule) :
+
+```sql
+SELECT sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE '_cf_%' AND name NOT LIKE 'sqlite_%';
 ```
-
-Les requêtes SQL qui remplissent ces tables doivent aussi être ajoutées au dépôt : sans elles, la base ne peut pas être reconstruite.
 
 ### Maintenance saisonnière
 
