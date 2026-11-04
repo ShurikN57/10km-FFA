@@ -95,6 +95,22 @@ class MergeTests(unittest.TestCase):
         self.assertEqual((out[0]['athlete_ffa_id'], out[0]['pb_sec']), ('9', 2500))
         self.assertEqual(stats['linked_id'], 1)
 
+    def test_resultat_sans_identifiant_rattache_au_profil_identifie_unique(self):
+        out, stats = self.merge([profile('BITTEROLF Thomas', 7000, ffa_id='3611328')], [perf('BITTEROLF Thomas', 6900)])
+        self.assertEqual(len(out), 1)
+        self.assertEqual((out[0]['pb_sec'], out[0]['athlete_ffa_id']), (6900, '3611328'))
+
+    def test_resultat_sans_identifiant_ambigu_cree_un_profil(self):
+        ref = [profile('MOREAU Alexandre', 3775, ffa_id='A'), profile('MOREAU Alexandre', 2577, ffa_id='B')]
+        out, stats = self.merge(ref, [perf('MOREAU Alexandre', 3000)])
+        self.assertEqual(len(out), 3)
+        self.assertEqual(sorted(p['pb_sec'] for p in out[:2]), [2577, 3775])
+
+    def test_resultat_sans_identifiant_prefere_le_profil_sans_identifiant(self):
+        ref = [profile('ADAM Frederic', 14726), profile('ADAM Frederic', 14332, ffa_id='2026257')]
+        out, _ = self.merge(ref, [perf('ADAM Frederic', 14000)])
+        self.assertEqual([(p['athlete_ffa_id'], p['pb_sec']) for p in out], [(None, 14000), ('2026257', 14332)])
+
     def test_nouvel_athlete(self):
         out, stats = self.merge([profile('DUPONT Jean', 2000, ffa_id='1')], [perf('NOUVEAU Coureur', 2900, ffa_id='2')])
         self.assertEqual(len(out), 2)
@@ -106,6 +122,23 @@ class MergeTests(unittest.TestCase):
         once, _ = self.merge(ref, perfs)
         twice, _ = self.merge(once, perfs)
         self.assertEqual(once, twice)
+
+
+class MinimumTimeTests(unittest.TestCase):
+    def test_temps_impossible_ecarte_avant_fusion(self):
+        doc = {'event': '252', 'distance': '5 km', 'datasets': [{'year': 2027, 'sex': 'M', 'rows': [
+            ["10'53''", 'RAPIDE Jean', 'Club', '', '', '', '01/10/26', '', '1990', '7'],
+            ["16'00''", 'RAPIDE Jean', 'Club', '', '', '', '02/10/26', '', '1990', '7']]}]}
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / 'ffa_5km_2027.json.gz'
+            with gzip.open(path, 'wt', encoding='utf-8') as f:
+                json.dump(doc, f)
+            perfs, report = b.load_raw([path])
+        self.assertEqual(report['too_fast'], 1)
+        ref = empty()
+        ref['5k'] = [profile('RAPIDE Jean', 970, ffa_id='7')]
+        out, _ = b.merge(ref, perfs)
+        self.assertEqual([p['pb_sec'] for p in out['5k']], [960])
 
 
 class BuildTests(unittest.TestCase):

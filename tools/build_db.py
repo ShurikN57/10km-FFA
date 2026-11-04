@@ -119,7 +119,7 @@ def parse_date(text):
 def load_raw(paths):
     """Performances des exports bruts, par distance, avec un rapport de lecture."""
     perfs = {key: [] for key, _, _ in DISTANCES}
-    report = {'files': [], 'rows': 0, 'unreadable': 0, 'examples': []}
+    report = {'files': [], 'rows': 0, 'unreadable': 0, 'too_fast': 0, 'examples': []}
     for path in paths:
         with gzip.open(path, 'rt', encoding='utf-8') as f:
             doc = json.load(f)
@@ -136,6 +136,11 @@ def load_raw(paths):
                     report['unreadable'] += 1
                     if len(report['examples']) < 5:
                         report['examples'].append(r[:2])
+                    continue
+                if sec < MIN_PB.get(dist, 0):
+                    # Temps impossible (erreur de saisie) : écarté avant la fusion
+                    # pour ne pas écraser le vrai record de l'athlète.
+                    report['too_fast'] += 1
                     continue
                 birth = str(r[8] or '').strip() if len(r) > 8 else ''
                 perfs[dist].append({
@@ -166,12 +171,12 @@ def merge(profiles, perfs):
     stats = {'improved': 0, 'new': 0, 'unchanged': 0, 'linked_id': 0}
     for key, _, _ in DISTANCES:
         plist = [dict(p) for p in profiles[key]]
-        by_id, by_nbs = {}, {}
+        nbs = lambda p: ('nbs', name_key(p['full_name']), p.get('birth_year'), p.get('sex'))
+        by_id, by_nbs = {}, {}  # by_nbs : tous les profils (avec ou sans identifiant)
         for p in plist:
             if p.get('athlete_ffa_id'):
                 by_id.setdefault(str(p['athlete_ffa_id']), p)
-            else:
-                by_nbs.setdefault(identity(p), []).append(p)
+            by_nbs.setdefault(nbs(p), []).append(p)
         # Meilleure performance de la nouvelle saison pour chaque athlète.
         best = {}
         for perf in perfs.get(key, []):
@@ -179,30 +184,33 @@ def merge(profiles, perfs):
             if k not in best or perf['pb_sec'] < best[k]['pb_sec']:
                 best[k] = perf
         for k, perf in best.items():
+            cands = by_nbs.get(nbs(perf), [])
+            without_id = [c for c in cands if not c.get('athlete_ffa_id')]
             p = None
             if k[0] == 'id':
                 p = by_id.get(k[1])
-                if p is None:
-                    # Profil connu sans identifiant (même nom, année, sexe) : on le
-                    # relie seulement s'il est unique, comme à l'import d'origine.
-                    cands = by_nbs.get(('nbs', name_key(perf['full_name']), perf.get('birth_year'), perf.get('sex')), [])
-                    if len(cands) == 1:
-                        p = cands[0]
-                        by_nbs[identity(p)].remove(p)
-                        p['athlete_ffa_id'] = perf['athlete_ffa_id']
-                        by_id[k[1]] = p
-                        stats['linked_id'] += 1
+                if p is None and len(without_id) == 1:
+                    # Profil connu sans identifiant (même nom, année, sexe) : relié
+                    # seulement s'il est unique, comme à l'import d'origine.
+                    p = without_id[0]
+                    p['athlete_ffa_id'] = perf['athlete_ffa_id']
+                    by_id[k[1]] = p
+                    stats['linked_id'] += 1
             else:
-                cands = by_nbs.get(k, [])
-                p = cands[0] if cands else None
+                # Sans identifiant : le profil sans identifiant de même nom, année et
+                # sexe ; sinon l'unique profil identifié correspondant. En cas
+                # d'ambiguïté (plusieurs homonymes identifiés), nouveau profil.
+                if without_id:
+                    p = without_id[0]
+                elif len(cands) == 1:
+                    p = cands[0]
             if p is None:
                 new = {c: perf.get(c) for c in ('full_name', 'birth_year', 'sex', 'pb_sec', 'pb_date', 'club',
                                                  'athlete_ffa_id', 'league', 'department')}
                 plist.append(new)
                 if new['athlete_ffa_id']:
                     by_id[str(new['athlete_ffa_id'])] = new
-                else:
-                    by_nbs.setdefault(identity(new), []).append(new)
+                by_nbs.setdefault(nbs(new), []).append(new)
                 stats['new'] += 1
             elif perf['pb_sec'] < int(p['pb_sec']):
                 for c in ('pb_sec', 'pb_date', 'club', 'league', 'department'):
@@ -411,6 +419,7 @@ def main(argv=None):
             print(f'  {path} : {dist}, {n:,} performances')
         share = report['unreadable'] / max(1, report['rows'])
         print(f'  lignes illisibles : {report["unreadable"]:,} / {report["rows"]:,} ({share:.2%}) {report["examples"]}')
+        print(f'  temps impossibles écartés : {report["too_fast"]:,}')
         if share > args.max_unreadable:
             raise SystemExit('Trop de lignes illisibles : format de l\'export à vérifier, aucune base produite.')
         profiles, stats = merge(profiles, perfs)
