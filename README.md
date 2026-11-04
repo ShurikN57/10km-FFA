@@ -1,6 +1,6 @@
 # RP — Running Performance
 
-PWA (pensée pour iPhone) qui compare les résultats d'une course aux meilleures performances des **bilans FFA 2024–2026** sur 5 km, 10 km, semi-marathon et marathon.
+PWA (pensée pour iPhone) qui compare les résultats d'une course aux meilleures performances des **bilans FFA depuis la saison 2024** sur 5 km, 10 km, semi-marathon et marathon.
 
 Application : <https://shurikn57.github.io/10km-FFA/>
 
@@ -25,11 +25,12 @@ Application : <https://shurikn57.github.io/10km-FFA/>
 │   ├── worker.js          Routes /search, /ranking, /ranking-options, /match, /health
 │   ├── wrangler.toml      Configuration du Worker (base D1, limitation de débit)
 │   ├── schema.sql         Schéma complet de la base de production
-│   └── prepare_import.py  Génère l'import SQL de la table athletes depuis data/
+│   └── migrations/        Modifications de la base (index), dans l'ordre
 │
-├── data/                  Bilans FFA compressés (une ligne par athlète et par distance)
+├── data/reference/        Référence figée : meilleur temps 2024–2026 par athlète et distance (voir data/README.md)
 ├── tools/                 Scripts navigateur de collecte et d'import
-│   ├── ffa-auto-24-v3.js                 Collecte des 24 bilans sur athle.fr (console)
+│   ├── ffa-collecte-bilans.js            Collecte des bilans sur athle.fr (saison en cours par défaut)
+│   ├── build_db.py                       Construit la base complète (référence + nouvelle saison)
 │   ├── import_comparateur_user.js        Userscript : envoie un classement GoTiming/UTMB/ACN à l'app
 │   └── Installer_Raccourci_iPhone_v7.html  Le même import en raccourci iPhone
 │

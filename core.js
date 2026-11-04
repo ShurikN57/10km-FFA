@@ -145,6 +145,8 @@ const FFA_SEASON_CATEGORY_AGES = [
   ["M4",55,59],["M5",60,64],["M6",65,69],["M7",70,74],
   ["M8",75,79],["M9",80,84],["M10",85,null]
 ];
+// Première saison des bilans collectés (= FIRST_SEASON dans api/worker.js).
+const FFA_FIRST_SEASON = 2024;
 function ffaSeasonYear(date) {
   const [y,m]=new Intl.DateTimeFormat("en-CA",{timeZone:"Europe/Paris",year:"numeric",month:"2-digit"})
     .format(date||new Date()).split("-").map(Number);

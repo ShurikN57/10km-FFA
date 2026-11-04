@@ -36,3 +36,5 @@ jobs:
           node --check api/worker.js
       - name: Tests unitaires
         run: npm test
+      - name: Tests de construction de la base (Python)
+        run: python3 tests/test_build_db.py

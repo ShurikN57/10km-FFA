@@ -8,7 +8,6 @@ API en lecture seule utilisée par `mobile.html` pour la recherche, le classemen
 - `wrangler.toml` : configuration du Worker (base D1, limitation de débit).
 - `schema.sql` : **schéma complet de la base de production**, extrait de D1 le 2026-11-04, avec une description de chaque table. Il sert aussi aux tests d'intégration.
 - `migrations/` : modifications de la base appliquées après cet extrait, dans l'ordre (`0001_…`, `0002_…`). Schéma actuel = `schema.sql` + migrations.
-- `prepare_import.py` : lit les bilans de `data/` (4 distances) et génère `ffa_d1_import.sql` (table `athletes`, fichier ignoré par Git).
 
 ## Routes
 
@@ -70,7 +69,7 @@ Principes appliqués :
 | `athlete_scope`, `ffa_scope_options` | Ligue, département, club, année : filtres « périmètre ». |
 | `ffa_distance_stats`, `ffa_french_stats` | Totaux par distance. |
 
-**Toujours manquant :** les requêtes SQL qui remplissent les tables de rang. Elles sont indispensables pour recalculer les rangs ou réimporter les données.
+Toutes ces tables sont reconstruites par `tools/build_db.py`. Les définitions ont été vérifiées par empreintes contre la base de production : rang = `RANK()` par temps croissant ; `display_order` = ordre temps, nom, id ; le rang « français » est le rang parmi tous les athlètes.
 
 Pour comparer avec la production, extraire de nouveau le schéma (en lecture seule) :
 
@@ -96,12 +95,4 @@ Les migrations de ce dépôt n'ajoutent que des index (`CREATE INDEX IF NOT EXIS
 
 Automatique via `.github/workflows/deploy-cloudflare-worker.yml` (tests puis `wrangler deploy`) à chaque modification de `worker.js` ou `wrangler.toml` sur `main`. Secrets GitHub requis : `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`.
 
-Réimport complet de la table `athletes` :
-
-```bash
-cd api
-python prepare_import.py
-npx wrangler d1 execute ffa-comparateur --remote --file ffa_d1_import.sql
-```
-
-⚠️ `prepare_import.py` ne fait qu'insérer : la table `athletes` doit être vidée avant. Le réimport recrée les `id`, donc les tables de rang et la recherche plein texte doivent ensuite être régénérées, puis `CACHE_VERSION` incrémenté.
+Mise à jour des bilans : voir [`data/README.md`](../data/README.md). La base complète (toutes les tables ci-dessus) est construite par `tools/build_db.py`, puis importée dans une **nouvelle** base D1 ; on bascule ensuite `database_id` dans `wrangler.toml`.

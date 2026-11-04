@@ -98,6 +98,8 @@ function categoryBounds(birthYear, seasonYear = categorySeasonYear()) {
   return null;
 }
 
+// Première saison des bilans collectés.
+const FIRST_SEASON = 2024;
 const MAX_PAGE = 10000;
 
 // Saison FFA d'une perf (pb_date au format JJ/MM/AA) : la saison N va du
@@ -263,7 +265,9 @@ async function handle(request, env) {
       const department = /^[A-Z0-9-]{1,5}$/.test(departmentRaw) ? departmentRaw : '';
       const club = String(url.searchParams.get('club') || '').trim().slice(0, 180);
       const seasonYearRaw = String(url.searchParams.get('seasonYear') || '').trim();
-      const seasonYear = /^(2024|2025|2026)$/.test(seasonYearRaw) ? Number(seasonYearRaw) : 0;
+      // Saisons disponibles : de la première saison collectée à la saison en cours.
+      const seasonYear = /^\d{4}$/.test(seasonYearRaw) && Number(seasonYearRaw) >= FIRST_SEASON && Number(seasonYearRaw) <= currentSeasonYear()
+        ? Number(seasonYearRaw) : 0;
       const minPb = Number(url.searchParams.get('minPb') || 0);
       const maxPb = Number(url.searchParams.get('maxPb') || 0);
       const q = normalizeName(url.searchParams.get('q'));
@@ -372,7 +376,7 @@ async function handle(request, env) {
           // pb_date est au format JJ/MM/AA ; la saison N va du 01/09/N-1 au 31/08/N.
           // SEASON_SQL doit rester identique à l'expression des index de saison.
           // Une date vide donne la saison 2000, jamais égale à seasonYear
-          // (2024–2026) : pas besoin de garde sur le format, ce qui permet à
+          // (2024 ou plus) : pas besoin de garde sur le format, ce qui permet à
           // SQLite de répondre depuis l'index sans relire les lignes.
           scopeWhere.push(`${SEASON_SQL} = ?`);
           scopeBinds.push(seasonYear);
