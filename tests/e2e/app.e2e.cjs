@@ -85,14 +85,28 @@ async function main() {
   assert.equal(await page.evaluate(() => window.__noReload), true, 'pas de rechargement de page en changeant de distance dans Analyse');
   assert.ok(api.includes('/match 5k'), 'course recomparée sur le 5 km');
 
-  // 5. Restaurer le dernier classement après rechargement
+  // 5. Import compressé (script v1.4) d'une grosse course : la compression est
+  //    faite par la fonction du userscript lui-même, dans le navigateur.
+  const script = fs.readFileSync(path.join(ROOT, 'tools', 'import_comparateur_user.js'), 'utf8');
+  const deflateSrc = script.slice(script.indexOf('async function deflateBase64Url'), script.indexOf('// ---------- Interface'));
+  const bigRace = Array.from({ length: 3000 }, (_, i) => `${i + 1}  COUREUR${i} Prénom${i}  0:${String(30 + (i % 29)).padStart(2, '0')}:${String(i % 60).padStart(2, '0')}  SEH`).join('\n')
+    + '\n3001  DUPONT Jean  0:35:00  M1H';
+  const packed = await page.evaluate(async ({ src, text }) => { const f = new Function(src + '; return deflateBase64Url;')(); return f(text); }, { src: deflateSrc, text: bigRace });
+  assert.ok(packed && packed.length < bigRace.length / 2, 'classement compressé (' + (packed && packed.length) + ' car. pour ' + bigRace.length + ')');
+  await page.goto(base + '/mobile.html?distance=10k#importz=' + packed);
+  await page.waitForFunction(() => /3001 participants détectés/.test(document.getElementById('raceMsg').textContent));
+  await page.waitForFunction(() => /correspondances FFA\./.test(document.getElementById('raceMsg').textContent));
+  assert.equal(await page.textContent('#sTotal'), '3001');
+  assert.equal(await page.evaluate(() => location.hash), '', 'hash nettoyé après import');
+
+  // 6. Restaurer le dernier classement après rechargement
   await page.goto(base + '/mobile.html');
   await page.click('[data-app-tab="analyse"]');
   await page.click('#restoreBtn');
-  await page.waitForFunction(() => document.getElementById('sTotal').textContent === '2');
+  await page.waitForFunction(() => document.getElementById('sTotal').textContent === '3001');
 
   assert.deepEqual(errors, [], 'aucune erreur JavaScript');
-  console.log('OK — e2e : recherche, classement, filtres, distances, import, restauration (' + api.length + ' appels API simulés)');
+  console.log('OK — e2e : recherche, classement, filtres, distances, import, import compressé de 3001 coureurs, restauration (' + api.length + ' appels API simulés)');
   await browser.close();
   server.close();
 }

@@ -1261,21 +1261,31 @@ $("paste").addEventListener("input", ()=>{
   }, 500);
 });
 
-// Import direct depuis le userscript Safari : le texte est déjà au format
-// attendu, encodé en base64 dans le hash de l'URL. Aucune dépendance au
-// presse-papier ni à un raccourci.
+// Import direct depuis le userscript Safari : le classement est dans le hash
+// de l'URL, compressé (#importz=, script v1.4+) ou non (#import64=, anciens
+// scripts). Aucune dépendance au presse-papier ni à un raccourci.
 (function(){
   function fromB64(s){ return decodeURIComponent(escape(atob(s))); }
-  function loadImport64(){
-    if(!location.hash.startsWith('#import64=')) return;
+  async function inflateBase64Url(s){
+    const b64=s.replace(/-/g,'+').replace(/_/g,'/')+'==='.slice((s.length+3)%4);
+    const bin=atob(b64);
+    const bytes=new Uint8Array(bin.length);
+    for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+    const stream=new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+    return await new Response(stream).text();
+  }
+  let importing=false;
+  async function loadImport64(){
+    const h=location.hash;
+    const compressed=h.startsWith('#importz=');
+    if(importing || !(compressed || h.startsWith('#import64='))) return;
+    importing=true;
     try{
-      const text=fromB64(location.hash.slice('#import64='.length));
+      const text=compressed ? await inflateBase64Url(h.slice('#importz='.length)) : fromB64(h.slice('#import64='.length));
       if(!text || text.trim().length<10) throw new Error('données importées vides');
       $("paste").value=text;
       switchAppTab("analyse");
 
-      // Parse l'import immédiatement, sans attendre le chargement complet
-      // de la base FFA. Cela remplit Analyse tout de suite sur Safari.
       let parsed=parseUtmbPastedText(text);
       let source=parsed.length ? "UTMB" : "texte";
       if(!parsed.length) parsed=parsePlainText(text);
@@ -1291,7 +1301,9 @@ $("paste").addEventListener("input", ()=>{
       history.replaceState(null,'',location.pathname+location.search);
       if(parsed.length) matchRaceWithApi(source);
     }catch(e){
-      alert('Import : '+e.message);
+      alert('Import : '+(e&&e.message?e.message:e));
+    }finally{
+      importing=false;
     }
   }
   window.addEventListener('load',loadImport64);
