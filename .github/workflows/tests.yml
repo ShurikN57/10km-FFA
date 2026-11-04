@@ -1,0 +1,38 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Version PWA incrémentée si l'app change
+        if: github.event_name == 'pull_request'
+        run: |
+          base="origin/${{ github.base_ref }}"
+          app_changed=$(git diff --name-only "$base"...HEAD -- mobile.html core.js index.html manifest.webmanifest icons/ | head -1)
+          sw_changed=$(git diff "$base"...HEAD -- sw.js | grep -E "^\+const SHELL_CACHE" || true)
+          if [ -n "$app_changed" ] && [ -z "$sw_changed" ]; then
+            echo "::error file=sw.js::L'app a changé ($app_changed…) mais pas SHELL_CACHE dans sw.js : le bouton « MAJ disponible » n'apparaîtra pas sur les téléphones. Incrémente SHELL_CACHE."
+            exit 1
+          fi
+          echo "OK"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Vérifier la syntaxe
+        run: |
+          node --check core.js
+          node --check sw.js
+          node --check cloudflare-prototype/worker.js
+      - name: Tests unitaires
+        run: npm test

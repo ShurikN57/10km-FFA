@@ -9,3 +9,13 @@ preview_urls = false
 binding = "DB"
 database_name = "ffa-comparateur"
 database_id = "110af62a-034e-471d-ae99-53971c754f7b"
+
+# Limitation de débit par IP (Workers Rate Limiting). Large volontairement :
+# les opérateurs mobiles partagent souvent une même IP entre beaucoup d'abonnés.
+[[ratelimits]]
+name = "RATE_LIMITER"
+namespace_id = "1001"
+
+  [ratelimits.simple]
+  limit = 300
+  period = 60

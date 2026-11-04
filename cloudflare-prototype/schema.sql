@@ -1,3 +1,8 @@
+-- SCHÉMA PARTIEL : seule la table `athletes` est définie ici (index de la
+-- version prototype). Le schéma complet de production, avec les tables de rang
+-- et la recherche plein texte, est dans schema_production.sql.
+-- ⚠️ DROP TABLE : exécuter ce fichier efface les profils existants.
+
 DROP TABLE IF EXISTS athletes;
 
 CREATE TABLE athletes (

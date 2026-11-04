@@ -202,6 +202,10 @@ th{background:#141922}
 .ranking-sex-segments button{height:34px;min-height:34px;padding:3px 8px;border:0;border-radius:9px;background:transparent;color:#aeb7c5;font-size:12px;font-weight:800;box-shadow:none}
 .ranking-sex-segments button.active{background:#3b82f6;color:#fff}
 .ranking-shortcuts .ranking-quick-btn{display:flex;align-items:center;justify-content:center;width:100%;min-width:0;height:42px;min-height:42px;padding:6px 12px;border-radius:12px;font-size:12px}
+.legal-note{margin:18px 2px calc(110px + env(safe-area-inset-bottom));color:var(--muted);font-size:12px;line-height:1.5}
+.legal-note summary{cursor:pointer;font-weight:700;padding:6px 0}
+.legal-note p{margin:6px 0}
+.legal-note a{color:var(--accent)}
 .ffa-filter-drawer{display:none;position:fixed;inset:0;z-index:1400}
 .ffa-filter-drawer.show{display:block}
 .ffa-filter-backdrop{position:absolute;inset:0;border:0;border-radius:0;background:rgba(0,0,0,.64);backdrop-filter:blur(3px)}
@@ -415,6 +419,12 @@ th{background:#141922}
       </div>
     </section>
   </main>
+  <details class="legal-note">
+    <summary>Données &amp; vie privée</summary>
+    <p>Les performances affichées proviennent des bilans publics de la Fédération Française d'Athlétisme (<a href="https://www.athle.fr" rel="noopener">athle.fr</a>) pour les saisons 2024 à 2026 : nom, année de naissance, sexe, club et meilleure performance. RP est un outil indépendant, non affilié à la FFA.</p>
+    <p>Les classements de course que vous importez restent sur votre appareil ; seuls les noms sont envoyés au serveur pour retrouver les profils FFA correspondants, sans être conservés.</p>
+    <p>Pour demander la rectification ou le retrait de vos données, ouvrez une demande sur <a href="https://github.com/ShurikN57/10km-FFA/issues" rel="noopener">GitHub</a>.</p>
+  </details>
 </div>
 
 <nav class="app-tabbar-shell" aria-label="Navigation principale">
@@ -452,7 +462,7 @@ let ffaLoadingDistance=null;
 
 const FFA_DISTANCES={
   "5k":{label:"5 km",file:"./ffa_5km_2024_2026.json.gz",export:"comparaison_ffa_5km.csv",minPb:"Ex. 15:00",maxPb:"Ex. 20:00"},
-  "10k":{label:"10 km",file:"./ffa_10km_2024_2026_compact.json.gz",fallbackFile:"./ffa_base.json.gz",export:"comparaison_ffa_10km.csv",minPb:"Ex. 30:00",maxPb:"Ex. 35:00"},
+  "10k":{label:"10 km",file:"./ffa_base.json.gz",export:"comparaison_ffa_10km.csv",minPb:"Ex. 30:00",maxPb:"Ex. 35:00"},
   "semi":{label:"Semi-marathon",file:"./ffa_semi_2024_2026.json.gz",export:"comparaison_ffa_semi.csv",minPb:"Ex. 1:05:00",maxPb:"Ex. 1:30:00"},
   "marathon":{label:"Marathon",file:"./ffa_marathon_2024_2026.json.gz",export:"comparaison_ffa_marathon.csv",minPb:"Ex. 2:15:00",maxPb:"Ex. 3:30:00"}
 };
@@ -531,47 +541,7 @@ let ffaSexRank=new Map();
 let ffaCategoryRank=new Map();
 let ffaGeneralRows=[];
 function currentFfaCategory(p){
-  const y=Number(p.annee_naissance);
-  if(!Number.isFinite(y)) return "";
-  const afterSep2026 = new Date() >= new Date("2026-09-01T00:00:00");
-  if(afterSep2026){
-    if(y>=2005 && y<=2007) return "ES";
-    if(y>=1993 && y<=2004) return "SE";
-    if(y<=1992){
-      if(y>=1988) return "M0";
-      if(y>=1983) return "M1";
-      if(y>=1978) return "M2";
-      if(y>=1973) return "M3";
-      if(y>=1968) return "M4";
-      if(y>=1963) return "M5";
-      if(y>=1958) return "M6";
-      if(y>=1953) return "M7";
-      if(y>=1948) return "M8";
-      if(y>=1943) return "M9";
-      return "M10";
-    }
-    if(y>=2008 && y<=2009) return "JU";
-    if(y>=2010 && y<=2011) return "CA";
-    return "";
-  }
-  if(y>=2004 && y<=2006) return "ES";
-  if(y>=1992 && y<=2003) return "SE";
-  if(y<=1991){
-    if(y>=1987) return "M0";
-    if(y>=1982) return "M1";
-    if(y>=1977) return "M2";
-    if(y>=1972) return "M3";
-    if(y>=1967) return "M4";
-    if(y>=1962) return "M5";
-    if(y>=1957) return "M6";
-    if(y>=1952) return "M7";
-    if(y>=1947) return "M8";
-    if(y>=1942) return "M9";
-    return "M10";
-  }
-  if(y>=2007 && y<=2008) return "JU";
-  if(y>=2009 && y<=2010) return "CA";
-  return "";
+  return ffaCategoryFromBirthYear(p && p.annee_naissance);
 }
 function assignRanks(arr,map){
   arr.sort((a,b)=>Number(a.pb_sec)-Number(b.pb_sec));
@@ -1201,6 +1171,7 @@ function clearLastPaste(){
   }catch(e){}
 }
 
+const MATCH_CHUNK=1000; // doit rester ≤ à la limite de /match dans worker.js
 async function matchRaceWithApi(source="texte"){
   const token=++analysisMatchToken;
   result=[];
@@ -1214,16 +1185,25 @@ async function matchRaceWithApi(source="texte"){
 
   $("raceMsg").textContent=race.length+" participants détectés ("+source+"). Recherche des correspondances FFA…";
   try{
-    const response=await fetch(FFA_API+"/match?distance="+encodeURIComponent(currentDistance),{
-      method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({names})
-    });
-    if(!response.ok) throw new Error("HTTP "+response.status);
-    const data=await response.json();
-    if(token!==analysisMatchToken) return;
+    // L'API accepte au plus MATCH_CHUNK noms par requête (2 noms par coureur) :
+    // au-delà, les grosses courses sont envoyées en plusieurs paquets.
+    const apiRows=[];
+    for(let i=0;i<names.length;i+=MATCH_CHUNK){
+      if(names.length>MATCH_CHUNK){
+        $("raceMsg").textContent=race.length+" participants détectés ("+source+"). Recherche des correspondances FFA… "+Math.min(100,Math.round(i/names.length*100))+" %";
+      }
+      const response=await fetch(FFA_API+"/match?distance="+encodeURIComponent(currentDistance),{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({names:names.slice(i,i+MATCH_CHUNK)})
+      });
+      if(!response.ok) throw new Error("HTTP "+response.status);
+      const data=await response.json();
+      if(token!==analysisMatchToken) return;
+      if(Array.isArray(data.rows)) apiRows.push(...data.rows);
+    }
 
-    const candidates=(Array.isArray(data.rows)?data.rows:[]).map(row=>({
+    const candidates=apiRows.map(row=>({
       full_name:row.full_name||"",
       name_key:nameKey(row.full_name||""),
       annee_naissance:row.birth_year||"",
@@ -1331,10 +1311,7 @@ $("restoreBtn").onclick=()=>{
 setImportEnabled(false);
 async function loadFfaRows(distance){
   const cfg=FFA_DISTANCES[distance];
-  let r=await fetch(cfg.file+"?v=20260909b",{cache:"no-store"});
-  if(!r.ok && cfg.fallbackFile){
-    r=await fetch(cfg.fallbackFile+"?v=20260909b",{cache:"no-store"});
-  }
+  const r=await fetch(cfg.file+"?v=20260909b",{cache:"no-store"});
   if(!r.ok) throw new Error("HTTP "+r.status);
   if(!("DecompressionStream" in window)) throw new Error("Décompression gzip non prise en charge par ce navigateur");
   if(!r.body) throw new Error("Flux de la base FFA indisponible");
@@ -1516,6 +1493,9 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
   window.addEventListener('load', async()=>{
     const updateBtn=document.getElementById('pwaUpdateBtn');
     let refreshing=false;
+    // Première installation : le SW prend la main sans qu'il y ait de nouvelle
+    // version, inutile de recharger la page.
+    const hadController=!!navigator.serviceWorker.controller;
     const showUpdate=()=>{ if(updateBtn) updateBtn.classList.add('show'); };
     const hideUpdate=()=>{ if(updateBtn) updateBtn.classList.remove('show'); };
     try{
@@ -1539,7 +1519,7 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
         }
       });
       navigator.serviceWorker.addEventListener('controllerchange',()=>{
-        if(refreshing) return;
+        if(refreshing || !hadController) return;
         refreshing=true;
         hideUpdate();
         location.reload();

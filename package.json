@@ -1,0 +1,8 @@
+{
+  "name": "10km-ffa",
+  "private": true,
+  "description": "RP — comparateur de performances course à pied / bilans FFA",
+  "scripts": {
+    "test": "node --no-warnings --test tests/core.test.js tests/worker.test.mjs tests/worker-sql.test.mjs"
+  }
+}

@@ -153,6 +153,37 @@ function ffaCategoryToYearRange(cat) {
   return null;
 }
 
+// --- Catégorie FFA officielle de la saison en cours ---
+// La saison N commence le 1er septembre N-1 (heure de Paris) ; l'âge de
+// catégorie est celui atteint pendant l'année N. Même table que le Worker.
+const FFA_SEASON_CATEGORY_AGES = [
+  ["CA",16,17],["JU",18,19],["ES",20,22],["SE",23,34],
+  ["M0",35,39],["M1",40,44],["M2",45,49],["M3",50,54],
+  ["M4",55,59],["M5",60,64],["M6",65,69],["M7",70,74],
+  ["M8",75,79],["M9",80,84],["M10",85,null]
+];
+function ffaSeasonYear(date) {
+  const [y,m]=new Intl.DateTimeFormat("en-CA",{timeZone:"Europe/Paris",year:"numeric",month:"2-digit"})
+    .format(date||new Date()).split("-").map(Number);
+  return m>=9 ? y+1 : y;
+}
+// Dernière saison dont les rangs par catégorie sont précalculés dans D1
+// (= RANK_CAT_AFTER_SEASON dans worker.js) : les catégories affichées ne la
+// dépassent pas, pour rester cohérentes avec les rangs.
+const FFA_LATEST_RANKED_SEASON = 2027;
+function ffaCategorySeasonYear(date) {
+  return Math.min(ffaSeasonYear(date), FFA_LATEST_RANKED_SEASON);
+}
+function ffaCategoryFromBirthYear(birthYear, seasonYear) {
+  const y=Number(birthYear);
+  if(!birthYear || !Number.isFinite(y)) return "";
+  const age=(seasonYear||ffaCategorySeasonYear())-y;
+  for(const [code,minAge,maxAge] of FFA_SEASON_CATEGORY_AGES) {
+    if(age>=minAge && (maxAge==null || age<=maxAge)) return code;
+  }
+  return "";
+}
+
 function parseCSV(text) {
   text = text.replace(/^\uFEFF/,"");
   const lines = text.split(/\r?\n/).filter(x=>x.trim());
