@@ -586,7 +586,7 @@ async function renderFfaAthleteSearch(){
   msg.textContent="Recherche…";
   try{
     const params=new URLSearchParams({distance:currentDistance,q:raw,mode:ffaRankMode});
-    const r=await fetch(FFA_API+"/search?"+params.toString(),{cache:"no-store"});
+    const r=await fetch(FFA_API+"/search?"+params.toString());
     if(!r.ok) throw new Error("HTTP "+r.status);
     const data=await r.json();
     if(token!==ffaApiSearchToken) return;
@@ -608,7 +608,7 @@ async function renderFfaAthleteSearch(){
       const alternatives=[];
       for(const distance of otherDistances){
         const altParams=new URLSearchParams({distance,q:raw,mode:ffaRankMode});
-        const altResponse=await fetch(FFA_API+"/search?"+altParams.toString(),{cache:"no-store"});
+        const altResponse=await fetch(FFA_API+"/search?"+altParams.toString());
         if(!altResponse.ok) continue;
         const altData=await altResponse.json();
         if(token!==ffaApiSearchToken) return;
@@ -816,7 +816,7 @@ async function loadFfaScopeOptions(){
   const token=++ffaScopeOptionsToken;
   ['ffaFullLeague','ffaFullDepartment','ffaFullClub','ffaFullRaceYear'].forEach(id=>{const el=$(id);if(el)el.disabled=true;});
   const request=(async()=>{
-    const response=await fetch(FFA_API+'/ranking-options?distance='+encodeURIComponent(distance),{cache:'no-store'});
+    const response=await fetch(FFA_API+'/ranking-options?distance='+encodeURIComponent(distance));
     if(!response.ok) throw new Error('HTTP '+response.status);
     const data=await response.json();
     if(token!==ffaScopeOptionsToken||distance!==currentDistance) return;
@@ -940,7 +940,7 @@ async function renderFullFfaRanking(resetPage=false){
   if(maxPb!=null) params.set("maxPb",String(maxPb));
   msg.textContent="Chargement du classement…";
   try{
-    const r=await fetch(FFA_API+"/ranking?"+params.toString(),{cache:"no-store"});
+    const r=await fetch(FFA_API+"/ranking?"+params.toString());
     if(!r.ok) throw new Error("HTTP "+r.status);
     const data=await r.json();
     if(token!==ffaRankingToken) return;
