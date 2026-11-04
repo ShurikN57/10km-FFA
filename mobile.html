@@ -1493,6 +1493,9 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
   window.addEventListener('load', async()=>{
     const updateBtn=document.getElementById('pwaUpdateBtn');
     let refreshing=false;
+    // Première installation : le SW prend la main sans qu'il y ait de nouvelle
+    // version, inutile de recharger la page.
+    const hadController=!!navigator.serviceWorker.controller;
     const showUpdate=()=>{ if(updateBtn) updateBtn.classList.add('show'); };
     const hideUpdate=()=>{ if(updateBtn) updateBtn.classList.remove('show'); };
     try{
@@ -1516,7 +1519,7 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
         }
       });
       navigator.serviceWorker.addEventListener('controllerchange',()=>{
-        if(refreshing) return;
+        if(refreshing || !hadController) return;
         refreshing=true;
         hideUpdate();
         location.reload();

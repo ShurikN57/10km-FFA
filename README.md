@@ -16,7 +16,7 @@ Application : <https://shurikn57.github.io/10km-FFA/>
 |---|---|
 | `mobile.html` | Application (HTML/CSS/JS), servie par GitHub Pages. `index.html` redirige dessus. |
 | `core.js` | Logique pure partagée : parsing des temps et des classements, matching des noms, catégories FFA. |
-| `sw.js`, `manifest.webmanifest`, `icons/` | PWA (service worker « réseau d'abord », installation sur l'écran d'accueil). |
+| `sw.js`, `manifest.webmanifest`, `icons/` | PWA : l'app s'ouvre instantanément depuis le cache, même hors ligne, et se rafraîchit en arrière-plan. Les bases gzip et l'API ne sont jamais mises en cache. |
 | `cloudflare-prototype/` | API Cloudflare Worker + base D1 : `/search`, `/ranking`, `/ranking-options`, `/match`, `/health`. Voir son [README](cloudflare-prototype/README.md). |
 | `ffa_*.json.gz` | Bases FFA compressées : source d'import de D1 et secours hors API. |
 | `ffa-auto-24-v3.js` | Script à lancer dans la console sur athle.fr pour collecter les 24 bilans (4 distances × 3 années × 2 sexes). |
@@ -42,7 +42,7 @@ puis ouvrir <http://localhost:8000/mobile.html>.
 ## Déploiement
 
 - **Front** : GitHub Pages (« Deploy from a branch », `main`).
-  **À chaque modification de l'app** (`mobile.html`, `core.js`, `index.html`, manifeste, icônes), incrémenter `SHELL_CACHE` dans `sw.js`, par exemple `comparateur-ffa-shell-v14` → `v15`. C'est ce changement de `sw.js` qui fait apparaître le bouton « ↻ MAJ disponible » sur les téléphones. Sans lui, une PWA restée ouverte en arrière-plan sur iPhone garde l'ancienne version. La CI fait échouer une PR qui modifie l'app sans incrémenter `SHELL_CACHE`.
+  **À chaque modification de l'app** (`mobile.html`, `core.js`, `index.html`, manifeste, icônes), incrémenter `SHELL_CACHE` dans `sw.js`, par exemple `comparateur-ffa-shell-v14` → `v15`. C'est ce changement de `sw.js` qui fait apparaître le bouton « ↻ MAJ disponible » sur les téléphones pour appliquer la version tout de suite. Sans lui, la nouveauté n'arrive qu'à l'ouverture suivante (rafraîchissement en arrière-plan). La CI fait échouer une PR qui modifie l'app sans incrémenter `SHELL_CACHE`.
 - **API** : le workflow `deploy-cloudflare-worker.yml` lance les tests puis déploie le Worker quand `cloudflare-prototype/worker.js` ou `wrangler.toml` change sur `main`.
 
 ## Maintenance saisonnière
