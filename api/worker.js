@@ -398,6 +398,44 @@ async function handle(request, env) {
           ? `a.full_name ${dir}, a.pb_sec ASC, a.id ASC`
           : `a.pb_sec ${dir}, a.full_name ASC, a.id ASC`;
 
+        if (category || club) {
+          // Catégorie (tranche d'années) : aucun index ne permet de s'arrêter tôt,
+          // le périmètre doit être lu en entier. Club : périmètre petit, lu
+          // directement par l'index (distance, club). Dans les deux cas, on le lit
+          // une seule fois (MATERIALIZED) et on en tire la page, le total et les rangs.
+          const unq = (sql) => sql.replace(/\ba\./g, '');
+          const res = await env.DB.prepare(`
+            WITH scoped AS MATERIALIZED (
+              SELECT a.id,a.full_name,a.name_key,a.birth_year,a.sex,a.pb_sec,a.pb_course,a.pb_date,a.club,a.athlete_ffa_id
+              ${scopeFrom}
+              WHERE ${scopeSql}
+            ), filtered AS (
+              SELECT * FROM scoped ${postWhere.length ? `WHERE ${unq(postWhere.join(' AND '))}` : ''}
+            ), page AS (
+              SELECT * FROM filtered ORDER BY ${unq(scopedOrder)} LIMIT ? OFFSET ?
+            ), h AS (
+              SELECT pb_sec AS pb, COUNT(*) AS n FROM scoped
+              WHERE pb_sec <= (SELECT MAX(pb_sec) FROM page) GROUP BY pb_sec
+            ), c AS (
+              SELECT pb, SUM(n) OVER (ORDER BY pb ROWS UNBOUNDED PRECEDING) - n AS faster FROM h
+            )
+            SELECT page.full_name,page.birth_year,page.sex,page.pb_sec,page.pb_course,page.pb_date,page.club,page.athlete_ffa_id,
+                   1 + c.faster AS rank, (SELECT COUNT(*) FROM filtered) AS filtered_total
+            FROM page LEFT JOIN c ON c.pb = page.pb_sec
+            ORDER BY ${unq(scopedOrder).replace(/(full_name|pb_sec|id)/g, 'page.$1')}`)
+            .bind(...scopeBinds, ...postBinds, pageSize, offset).all();
+          const raw = res?.results || [];
+          let total = Number(raw[0]?.filtered_total || 0);
+          if (!raw.length && offset > 0) {
+            // Page au-delà de la fin : le total vient d'un comptage séparé.
+            const t = await env.DB.prepare(`SELECT COUNT(*) AS n ${scopeFrom} WHERE ${filteredSql}`).bind(...scopeBinds, ...postBinds).first();
+            total = Number(t?.n || 0);
+          }
+          const rows = raw.map(({ filtered_total, ...row }) => row);
+          const pages = Math.max(1, Math.ceil(total / pageSize));
+          return json(request, { page: Math.min(page, pages), pageSize, total, pages, rows });
+        }
+
         // 1) La page et le total, sans calculer le rang de tout le périmètre.
         const [pageRes, totalRes] = await env.DB.batch([
           env.DB.prepare(`

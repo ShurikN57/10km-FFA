@@ -34,19 +34,22 @@ Mesurées sur une copie locale complète de la base (1 437 065 profils, schéma 
 | Général trié par temps ou par nom | ~900 ms | 1 ms |
 | Hommes / femmes | ~850 ms | ~12 ms |
 | Catégorie (SE, M0…) | 100–1 000 ms | 2–25 ms |
-| Ligue / département | 700–1 000 ms | 20–150 ms |
-| Saison (avec la migration 0001) | 0,6–1,6 s | 5–30 ms |
-| Français + sexe (avec la migration 0001) | ~1 s | 11–37 ms |
+| Saison (avec la migration 0001) | 0,6–1,6 s | 5–35 ms |
+| Français + sexe (avec la migration 0001) | ~1 s | 10–35 ms |
+| Ligue / département | 0,4–1 s | 30–170 ms |
+| Tri par nom ou recherche par nom dans un périmètre | 0,6–1,5 s | 20–100 ms |
+| Périmètre + catégorie | 80–500 ms | 40–330 ms |
+
+Sur 50 cas de classement par périmètre : 35,9 s → 3,8 s au total, aucun cas plus lent qu'avant.
 
 Principes appliqués :
 - **Trier par temps plutôt que par colonne de rang** : chaque rang est un `RANK()` par temps sur un ensemble qui contient le filtre courant, donc l'ordre est le même, mais SQLite peut suivre l'index `(distance, sexe, pb_sec)` et s'arrêter à la page demandée au lieu de trier toutes les lignes.
 - **Catégories** : le Worker compte d'abord la catégorie (2 ms). Au-delà de 4 % de la distance, il parcourt par temps (`+a.birth_year` désactive l'index par année) ; en dessous, il passe par l'index par année de naissance.
 - **Ligue / département** : `CROSS JOIN` depuis `athlete_scope`, pour partir de son index au lieu de parcourir toute la distance.
-- **Classements par périmètre** (saison, ligue, département, club, français) triés par rang ou temps : au lieu de calculer `RANK()` sur tout le périmètre, le Worker lit seulement la page et déduit les rangs exacts de 1 à 3 comptages sur l'index (rang = 1 + nombre d'athlètes plus rapides). Vérifié contre une référence indépendante sur 112 combinaisons (`tests/worker-scoped-ranks.test.mjs`).
+- **Classements par périmètre** (saison, ligue, département, club, français) : au lieu de calculer `RANK()` sur tout le périmètre, le Worker lit la page demandée (index par temps, ou par nom), compte le total, puis calcule le rang des seuls temps présents sur la page : un comptage groupé par temps sur l'index, limité au temps le plus lent de la page, puis une somme cumulée (rang = 1 + athlètes du périmètre strictement plus rapides). Même mécanisme pour le tri par rang, par temps ou par nom, avec ou sans recherche par nom. Avec une catégorie ou un club, le périmètre est lu une seule fois (`MATERIALIZED`). Vérifié contre une référence indépendante sur 768 combinaisons (`tests/worker-scoped-ranks.test.mjs`).
 - **Index de la migration 0001** : saison (index sur expression) et « français » (index partiel). Sans eux, le code fonctionne mais ces filtres restent lents.
 - **Cache** : `/search`, `/ranking` et `/ranking-options` sont mis en cache 1 h côté Cloudflare et 5 min dans le navigateur. Après un réimport, incrémenter `CACHE_VERSION`.
 
-Encore lents (0,5–0,8 s, rares) : tri par nom ou recherche par nom à l'intérieur d'un périmètre (saison, ligue…).
 
 ## Sécurité
 
