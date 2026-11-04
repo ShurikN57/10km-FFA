@@ -6,7 +6,8 @@ API en lecture seule utilisée par `mobile.html` pour la recherche, le classemen
 
 - `worker.js` : l'API.
 - `wrangler.toml` : configuration du Worker (base D1, limitation de débit).
-- `schema.sql` : **schéma complet de la base de production**, extrait de D1 le 2026-11-04, avec une description de chaque table. Il sert aussi aux tests d'intégration (`tests/worker-sql.test.mjs`).
+- `schema.sql` : **schéma complet de la base de production**, extrait de D1 le 2026-11-04, avec une description de chaque table. Il sert aussi aux tests d'intégration.
+- `migrations/` : modifications de la base appliquées après cet extrait, dans l'ordre (`0001_…`, `0002_…`). Schéma actuel = `schema.sql` + migrations.
 - `prepare_import.py` : lit les bilans de `data/` (4 distances) et génère `ffa_d1_import.sql` (table `athletes`, fichier ignoré par Git).
 
 ## Routes
@@ -33,16 +34,19 @@ Mesurées sur une copie locale complète de la base (1 437 065 profils, schéma 
 | Général trié par temps ou par nom | ~900 ms | 1 ms |
 | Hommes / femmes | ~850 ms | ~12 ms |
 | Catégorie (SE, M0…) | 100–1 000 ms | 2–25 ms |
-| Ligue / département | 700–1 000 ms | 20–220 ms |
-| Saison, « français + sexe » | ~1 s | ~1 s (voir plus bas) |
+| Ligue / département | 700–1 000 ms | 20–150 ms |
+| Saison (avec la migration 0001) | 0,6–1,6 s | 5–30 ms |
+| Français + sexe (avec la migration 0001) | ~1 s | 11–37 ms |
 
 Principes appliqués :
 - **Trier par temps plutôt que par colonne de rang** : chaque rang est un `RANK()` par temps sur un ensemble qui contient le filtre courant, donc l'ordre est le même, mais SQLite peut suivre l'index `(distance, sexe, pb_sec)` et s'arrêter à la page demandée au lieu de trier toutes les lignes.
 - **Catégories** : le Worker compte d'abord la catégorie (2 ms). Au-delà de 4 % de la distance, il parcourt par temps (`+a.birth_year` désactive l'index par année) ; en dessous, il passe par l'index par année de naissance.
 - **Ligue / département** : `CROSS JOIN` depuis `athlete_scope`, pour partir de son index au lieu de parcourir toute la distance.
+- **Classements par périmètre** (saison, ligue, département, club, français) triés par rang ou temps : au lieu de calculer `RANK()` sur tout le périmètre, le Worker lit seulement la page et déduit les rangs exacts de 1 à 3 comptages sur l'index (rang = 1 + nombre d'athlètes plus rapides). Vérifié contre une référence indépendante sur 112 combinaisons (`tests/worker-scoped-ranks.test.mjs`).
+- **Index de la migration 0001** : saison (index sur expression) et « français » (index partiel). Sans eux, le code fonctionne mais ces filtres restent lents.
 - **Cache** : `/search`, `/ranking` et `/ranking-options` sont mis en cache 1 h côté Cloudflare et 5 min dans le navigateur. Après un réimport, incrémenter `CACHE_VERSION`.
 
-Les filtres **saison** et **français + sexe** calculent une valeur sur chaque ligne de la distance. Pour les accélérer, il faudrait une colonne précalculée et un index dans D1 (modification de la base).
+Encore lents (0,5–0,8 s, rares) : tri par nom ou recherche par nom à l'intérieur d'un périmètre (saison, ligue…).
 
 ## Sécurité
 
@@ -74,6 +78,16 @@ SELECT sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE '_cf_%' AN
 ### Maintenance saisonnière
 
 `rank_cat_before_sep` / `athlete_rank_cat_before` correspondent à la saison 2026, `rank_cat_after_sep` / `athlete_rank_cat_after` à la saison 2027. Les catégories ne dépassent pas la saison 2027 tant que ces rangs n'ont pas été recalculés. Après recalcul, augmenter `RANK_CAT_AFTER_SEASON` (`worker.js`) et `FFA_LATEST_RANKED_SEASON` (`core.js`).
+
+## Appliquer une migration
+
+Dans le tableau de bord Cloudflare : **Storage & Databases → D1 → ffa-comparateur → Console**, coller le contenu du fichier de migration et exécuter. Ou en ligne de commande :
+
+```bash
+npx wrangler d1 execute ffa-comparateur --remote --file api/migrations/0001_index_saison_francais.sql
+```
+
+Les migrations de ce dépôt n'ajoutent que des index (`CREATE INDEX IF NOT EXISTS`) : aucune donnée modifiée, rejouables sans risque.
 
 ## Déploiement
 
