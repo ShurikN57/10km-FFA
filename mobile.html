@@ -277,7 +277,6 @@ th{background:#141922}
     <button type="button" class="distance-btn" data-distance="semi">Semi</button>
     <button type="button" class="distance-btn" data-distance="marathon">Marathon</button>
   </div>
-  <div id="baseStatus" aria-hidden="true" style="display:none">Chargement de la base FFA…</div>
   <main>
     <section class="tab-panel" data-app-panel="classement">
       <div class="premium-card" id="ffaRankingCard">
@@ -443,9 +442,6 @@ th{background:#141922}
 
 
 <script>
-let ffa = [];
-let ffaReady = false;
-let pendingAutoParse = false;
 let race = [];
 let result = [];
 let showOnlyNo = false;
@@ -453,18 +449,16 @@ let showOnlyFound = false;
 let sortKey = "pos";
 let sortDir = 1;
 let analysisMatchToken = 0;
+let lastRaceSource = "texte";
 const $ = id => document.getElementById(id);
 const FFA_API="https://ffa-comparateur-api.57compte2.workers.dev";
 let ffaApiSearchToken=0;
-let ffaLoadedDistance=null;
-let ffaLoadPromise=null;
-let ffaLoadingDistance=null;
 
 const FFA_DISTANCES={
-  "5k":{label:"5 km",file:"./ffa_5km_2024_2026.json.gz",export:"comparaison_ffa_5km.csv",minPb:"Ex. 15:00",maxPb:"Ex. 20:00"},
-  "10k":{label:"10 km",file:"./ffa_base.json.gz",export:"comparaison_ffa_10km.csv",minPb:"Ex. 30:00",maxPb:"Ex. 35:00"},
-  "semi":{label:"Semi-marathon",file:"./ffa_semi_2024_2026.json.gz",export:"comparaison_ffa_semi.csv",minPb:"Ex. 1:05:00",maxPb:"Ex. 1:30:00"},
-  "marathon":{label:"Marathon",file:"./ffa_marathon_2024_2026.json.gz",export:"comparaison_ffa_marathon.csv",minPb:"Ex. 2:15:00",maxPb:"Ex. 3:30:00"}
+  "5k":{label:"5 km",export:"comparaison_ffa_5km.csv",minPb:"Ex. 15:00",maxPb:"Ex. 20:00"},
+  "10k":{label:"10 km",export:"comparaison_ffa_10km.csv",minPb:"Ex. 30:00",maxPb:"Ex. 35:00"},
+  "semi":{label:"Semi-marathon",export:"comparaison_ffa_semi.csv",minPb:"Ex. 1:05:00",maxPb:"Ex. 1:30:00"},
+  "marathon":{label:"Marathon",export:"comparaison_ffa_marathon.csv",minPb:"Ex. 2:15:00",maxPb:"Ex. 3:30:00"}
 };
 const requestedDistance=new URLSearchParams(location.search).get("distance");
 const standaloneMode=window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone===true;
@@ -472,7 +466,6 @@ let currentDistance=FFA_DISTANCES[requestedDistance]
   ? requestedDistance
   : (standaloneMode ? localStorage.getItem("comparateur_ffa_distance") : "10k");
 if(!FFA_DISTANCES[currentDistance]) currentDistance="10k";
-let ffaLoadToken=0;
 
 function updateDistanceUi(){
   const cfg=FFA_DISTANCES[currentDistance];
@@ -481,30 +474,6 @@ function updateDistanceUi(){
   const min=$("ffaFullMinPb"), max=$("ffaFullMaxPb");
   if(min) min.placeholder=cfg.minPb;
   if(max) max.placeholder=cfg.maxPb;
-}
-
-const DISTANCE_RELOAD_UI_KEY="comparateur_ffa_distance_reload_ui";
-function saveDistanceReloadUi(){
-  const ids=["ffaAthleteSearch","ffaFullSearch","ffaFullYear","ffaFullSex","ffaFullCategory","ffaFullLeague","ffaFullDepartment","ffaFullClub","ffaFullRaceYear","ffaFullMinPb","ffaFullMaxPb"];
-  const fields={};
-  for(const id of ids){ const el=$(id); if(el) fields[id]=el.value; }
-  try{ sessionStorage.setItem(DISTANCE_RELOAD_UI_KEY,JSON.stringify({tab:activeAppTab,fields})); }catch(e){}
-}
-function restoreDistanceReloadUi(){
-  let st=null;
-  try{ st=JSON.parse(sessionStorage.getItem(DISTANCE_RELOAD_UI_KEY)||"null"); sessionStorage.removeItem(DISTANCE_RELOAD_UI_KEY); }catch(e){}
-  if(!st) return;
-  if(st.fields){
-    for(const [id,value] of Object.entries(st.fields)){ const el=$(id); if(el) el.value=value??""; }
-  }
-  if(st.tab==="analyse"){
-    const saved=loadLastPaste();
-    if(saved){
-      $("paste").value=saved;
-      pendingAutoParse=true;
-    }
-  }
-  if(st.tab && ["classement","recherche","analyse"].includes(st.tab)) switchAppTab(st.tab);
 }
 
 let activeAppTab="recherche";
@@ -536,43 +505,8 @@ document.querySelectorAll("[data-app-tab]").forEach(btn=>btn.addEventListener("c
 
 let ffaAthleteSearchTimer=null;
 let ffaRankMode="sex";
-let ffaGeneralRank=new Map();
-let ffaSexRank=new Map();
-let ffaCategoryRank=new Map();
-let ffaGeneralRows=[];
 function currentFfaCategory(p){
   return ffaCategoryFromBirthYear(p && p.annee_naissance);
-}
-function assignRanks(arr,map){
-  arr.sort((a,b)=>Number(a.pb_sec)-Number(b.pb_sec));
-  let prev=null,rank=0;
-  arr.forEach((p,i)=>{
-    const sec=Number(p.pb_sec);
-    if(sec!==prev){rank=i+1;prev=sec;}
-    map.set(p,rank);
-  });
-}
-function buildFfaSexRanks(){
-  ffaGeneralRank=new Map();
-  ffaSexRank=new Map();
-  ffaCategoryRank=new Map();
-  const valid=ffa.filter(p=>Number.isFinite(Number(p.pb_sec)));
-  // Conserve une seule vue triée du classement général pour éviter
-  // de retrier les 527k profils à chaque ouverture de l'onglet.
-  ffaGeneralRows=valid.slice();
-  assignRanks(ffaGeneralRows,ffaGeneralRank);
-  for(const sex of ["M","F"]){
-    assignRanks(valid.filter(p=>p.sexe===sex),ffaSexRank);
-  }
-  const groups=new Map();
-  for(const p of valid){
-    const cat=currentFfaCategory(p);
-    if(!cat||!p.sexe) continue;
-    const key=cat+"|"+p.sexe;
-    if(!groups.has(key)) groups.set(key,[]);
-    groups.get(key).push(p);
-  }
-  for(const arr of groups.values()) assignRanks(arr,ffaCategoryRank);
 }
 async function renderFfaAthleteSearch(){
   const input=$("ffaAthleteSearch"), box=$("ffaAthleteSearchResults"), msg=$("ffaAthleteSearchMsg");
@@ -586,7 +520,7 @@ async function renderFfaAthleteSearch(){
   msg.textContent="Recherche…";
   try{
     const params=new URLSearchParams({distance:currentDistance,q:raw,mode:ffaRankMode});
-    const r=await fetch(FFA_API+"/search?"+params.toString(),{cache:"no-store"});
+    const r=await fetch(FFA_API+"/search?"+params.toString());
     if(!r.ok) throw new Error("HTTP "+r.status);
     const data=await r.json();
     if(token!==ffaApiSearchToken) return;
@@ -608,7 +542,7 @@ async function renderFfaAthleteSearch(){
       const alternatives=[];
       for(const distance of otherDistances){
         const altParams=new URLSearchParams({distance,q:raw,mode:ffaRankMode});
-        const altResponse=await fetch(FFA_API+"/search?"+altParams.toString(),{cache:"no-store"});
+        const altResponse=await fetch(FFA_API+"/search?"+altParams.toString());
         if(!altResponse.ok) continue;
         const altData=await altResponse.json();
         if(token!==ffaApiSearchToken) return;
@@ -816,7 +750,7 @@ async function loadFfaScopeOptions(){
   const token=++ffaScopeOptionsToken;
   ['ffaFullLeague','ffaFullDepartment','ffaFullClub','ffaFullRaceYear'].forEach(id=>{const el=$(id);if(el)el.disabled=true;});
   const request=(async()=>{
-    const response=await fetch(FFA_API+'/ranking-options?distance='+encodeURIComponent(distance),{cache:'no-store'});
+    const response=await fetch(FFA_API+'/ranking-options?distance='+encodeURIComponent(distance));
     if(!response.ok) throw new Error('HTTP '+response.status);
     const data=await response.json();
     if(token!==ffaScopeOptionsToken||distance!==currentDistance) return;
@@ -940,7 +874,7 @@ async function renderFullFfaRanking(resetPage=false){
   if(maxPb!=null) params.set("maxPb",String(maxPb));
   msg.textContent="Chargement du classement…";
   try{
-    const r=await fetch(FFA_API+"/ranking?"+params.toString(),{cache:"no-store"});
+    const r=await fetch(FFA_API+"/ranking?"+params.toString());
     if(!r.ok) throw new Error("HTTP "+r.status);
     const data=await r.json();
     if(token!==ffaRankingToken) return;
@@ -1145,11 +1079,6 @@ function updateSortArrows(){
   });
 }
 
-function setImportEnabled(){
-  const el=$("pasteBtn");
-  if(el) el.disabled=false;
-}
-
 const LAST_PASTE_KEY="comparateur_ffa_lastPaste";
 const LEGACY_LAST_PASTE_KEYS=Object.keys(FFA_DISTANCES).map(d=>LAST_PASTE_KEY+"_"+d);
 function saveLastPaste(text){ try{ localStorage.setItem(LAST_PASTE_KEY,text); }catch(e){} }
@@ -1164,15 +1093,10 @@ function loadLastPaste(){
   }catch(e){}
   return "";
 }
-function clearLastPaste(){
-  try{
-    localStorage.removeItem(LAST_PASTE_KEY);
-    for(const key of LEGACY_LAST_PASTE_KEYS) localStorage.removeItem(key);
-  }catch(e){}
-}
 
 const MATCH_CHUNK=1000; // doit rester ≤ à la limite de /match dans worker.js
 async function matchRaceWithApi(source="texte"){
+  lastRaceSource=source;
   const token=++analysisMatchToken;
   result=[];
   render();
@@ -1249,11 +1173,6 @@ function runPasteAnalysis(){
   }
 }
 
-function compute() {
-  result = computeResults(race, ffa);
-  render();
-}
-
 function updateRaceFilterButtons(){
   const found=$("onlyFound"), no=$("onlyNo");
   if(!found||!no) return;
@@ -1308,113 +1227,27 @@ $("restoreBtn").onclick=()=>{
   runPasteAnalysis();
 };
 
-setImportEnabled(false);
-async function loadFfaRows(distance){
-  const cfg=FFA_DISTANCES[distance];
-  const r=await fetch(cfg.file+"?v=20260909b",{cache:"no-store"});
-  if(!r.ok) throw new Error("HTTP "+r.status);
-  if(!("DecompressionStream" in window)) throw new Error("Décompression gzip non prise en charge par ce navigateur");
-  if(!r.body) throw new Error("Flux de la base FFA indisponible");
-
-  // Décompression en flux : beaucoup moins de mémoire que arrayBuffer + Blob,
-  // indispensable pour la grosse base 10 km sur Safari/iOS.
-  const stream=r.body.pipeThrough(new DecompressionStream("gzip"));
-  const text=await new Response(stream).text();
-  const data=JSON.parse(text);
-  let rows=Array.isArray(data) ? data : (Array.isArray(data.rows) ? data.rows : []);
-
-  // Garde-fou 5 km : supprime les chronos impossibles (< 12 min), dont le 10'53 erroné.
-  if(distance==="5k") rows=rows.filter(row=>Number(row && row[3])>=720);
-  return rows;
-}
-async function loadFfaDistance(distance){
-  if(!FFA_DISTANCES[distance]) return;
-  currentDistance=distance;
-  localStorage.setItem("comparateur_ffa_distance",currentDistance);
-  updateDistanceUi();
-  refreshRestoreButton();
-  const token=++ffaLoadToken;
-  ffaReady=false;
-  setImportEnabled(false);
-  ffa=[]; ffaGeneralRows=[]; ffaGeneralRank=new Map(); ffaSexRank=new Map(); ffaCategoryRank=new Map();
-  ffaFullPage=0;
-  $("baseStatus").textContent="Chargement de la base FFA "+FFA_DISTANCES[distance].label+"…";
-  try{
-    const rows=await loadFfaRows(distance);
-    if(token!==ffaLoadToken) return;
-    ffa=buildFfaFromCompact(rows);
-    buildFfaSexRanks();
-    ffaReady=true;
-    ffaLoadedDistance=distance;
-    $("baseStatus").textContent="Base FFA "+FFA_DISTANCES[distance].label+" · "+ffa.length.toLocaleString("fr-FR")+" profils";
-    setImportEnabled(true);
-    if(activeAppTab==="classement") renderFullFfaRanking(true);
-    if(activeAppTab==="recherche") renderFfaAthleteSearch();
-    if(pendingAutoParse){ pendingAutoParse=false; runPasteAnalysis(); }
-    else if(race.length){ compute(); }
-  }catch(err){
-    if(token!==ffaLoadToken) return;
-    ffaReady=false;
-    ffaLoadedDistance=null;
-    $("baseStatus").textContent="Erreur de chargement de la base FFA "+FFA_DISTANCES[distance].label+" : "+(err&&err.message?err.message:err);
-    const msg=$("ffaAthleteSearchMsg"); if(msg) msg.textContent="Base "+FFA_DISTANCES[distance].label+" indisponible.";
-    const fmsg=$("ffaFullMsg"); if(fmsg) fmsg.textContent="Base "+FFA_DISTANCES[distance].label+" indisponible.";
-  }
-}
-function ensureFfaLoaded(){
-  if(ffaReady && ffaLoadedDistance===currentDistance) return Promise.resolve();
-  if(ffaLoadPromise && ffaLoadingDistance===currentDistance) return ffaLoadPromise;
-  const distance=currentDistance;
-  ffaLoadingDistance=distance;
-  ffaLoadPromise=loadFfaDistance(distance).finally(()=>{
-    if(ffaLoadingDistance===distance){ ffaLoadPromise=null; ffaLoadingDistance=null; }
-  });
-  return ffaLoadPromise;
-}
+// Changement de distance : tout passe par l'API, aucune base locale à libérer,
+// donc pas de rechargement de page (y compris dans l'onglet Analyse).
 document.querySelectorAll("[data-distance]").forEach(btn=>btn.addEventListener("click",()=>{
   const d=btn.getAttribute("data-distance");
   if(d===currentDistance || !FFA_DISTANCES[d]) return;
+  currentDistance=d;
+  try{ localStorage.setItem("comparateur_ffa_distance",d); }catch(e){}
   const distanceUrl=new URL(location.href);
   distanceUrl.searchParams.set("distance",d);
-  const localBaseInMemory=ffaReady || !!ffaLoadPromise;
-  if((activeAppTab==="recherche" || activeAppTab==="classement") && !localBaseInMemory){
-    currentDistance=d;
-    try{ localStorage.setItem("comparateur_ffa_distance",d); }catch(e){}
-    try{ history.replaceState(null,"",distanceUrl.href); }catch(e){}
-    updateDistanceUi();
-    refreshRestoreButton();
-    if(activeAppTab==="classement") renderFullFfaRanking(true); else renderFfaAthleteSearch();
-    return;
-  }
-  // Si une grosse base locale a été chargée pour Classement/Analyse,
-  // un rechargement garantit sa libération complète par Safari/iOS.
-  saveDistanceReloadUi();
-  try{ localStorage.setItem("comparateur_ffa_distance",d); }catch(e){}
-  location.replace(distanceUrl.href);
+  try{ history.replaceState(null,"",distanceUrl.href); }catch(e){}
+  updateDistanceUi();
+  refreshRestoreButton();
+  if(activeAppTab==="classement") renderFullFfaRanking(true);
+  else if(activeAppTab==="recherche") renderFfaAthleteSearch();
+  // Une course déjà analysée est recomparée avec la nouvelle distance.
+  if(race.length) matchRaceWithApi(lastRaceSource);
 }));
-restoreDistanceReloadUi();
 updateDistanceUi();
-if(activeAppTab==="analyse"){
-  if(pendingAutoParse){ pendingAutoParse=false; runPasteAnalysis(); }
-}else if(activeAppTab==="classement") renderFullFfaRanking(true);
+if(activeAppTab==="classement") renderFullFfaRanking(true);
 else renderFfaAthleteSearch();
 
-// Bouton "Coller" natif : déclenché par un vrai tap, donc un geste utilisateur
-// frais aux yeux de Safari. iOS affiche toujours sa propre confirmation
-// système ("Coller") avant d'autoriser la lecture du presse-papier par un
-// site web — ce n'est pas quelque chose que le code peut supprimer, c'est
-// une protection systématique d'iOS, pas un bug de l'appli.
-const _pasteBtn=$("pasteBtn");
-if(_pasteBtn) _pasteBtn.onclick=async()=>{
-  try{
-    const text=await navigator.clipboard.readText();
-    if(!text){ $("raceMsg").textContent="Presse-papier vide."; return; }
-    $("paste").value=text;
-    runPasteAnalysis();
-  }catch(e){
-    $("raceMsg").textContent="Collage automatique impossible.";
-  }
-};
 
 // Analyse automatique dès que le texte collé (bouton ou appui long manuel)
 // change — plus besoin d'un bouton "Analyser" séparé.

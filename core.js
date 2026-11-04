@@ -1,5 +1,6 @@
-// core.js — logique partagée entre app_base.html (desktop) et mobile.html.
-// Aucune référence au DOM ici : uniquement du parsing et du matching pur.
+// core.js — logique pure de l'app (mobile.html) : temps, noms, catégories FFA,
+// lecture des classements collés (texte, UTMB, tableau HTML) et matching.
+// Aucune manipulation du DOM de la page ici.
 
 function chronoFromSec(sec) {
   sec=Math.round(Number(sec)||0);
@@ -7,24 +8,6 @@ function chronoFromSec(sec) {
   return h ? h+"h"+String(m).padStart(2,"0")+"'"+String(ss).padStart(2,"0")
            : m+"'"+String(ss).padStart(2,"0");
 }
-function buildFfaFromCompact(rows){
-  return rows.map(r=>({
-    full_name:r[0],
-    name_key:nameKey(r[0]),
-    annee_naissance:r[1]||"",
-    sexe:r[2]||"",
-    club:r[6]||"",
-    pb_sec:r[3],
-    pb_chrono:chronoFromSec(r[3]),
-    pb_course:r[4]||"",
-    pb_date:r[5]||"",
-    nb_performances:1,
-    source:"",
-    athlete_ffa_id:r[7]||"",
-    ffa_url:r[7] ? "https://www.athle.fr/athletes/"+r[7]+"/resultats" : ""
-  }));
-}
-
 function getFfaProfileUrl(p){
   if(!p) return "";
   if(p.ffa_url) return p.ffa_url;
@@ -184,37 +167,6 @@ function ffaCategoryFromBirthYear(birthYear, seasonYear) {
   return "";
 }
 
-function parseCSV(text) {
-  text = text.replace(/^\uFEFF/,"");
-  const lines = text.split(/\r?\n/).filter(x=>x.trim());
-  if(!lines.length) return [];
-  const candidates=[";","\t",","];
-  let delim=";";
-  let best=-1;
-  for(const d of candidates) {
-    const needle = d === "\t" ? "\t" : d;
-    const n = lines[0].split(needle).length - 1;
-    if(n>best) {best=n;delim=d;}
-  }
-  const parseLine = line => {
-    let out=[],cur="",q=false;
-    for(let i=0;i<line.length;i++) {
-      const c=line[i];
-      if(c==='"') {
-        if(q && line[i+1]==='"') {cur+='"';i++;}
-        else q=!q;
-      } else if(c===delim && !q) {out.push(cur);cur="";}
-      else cur+=c;
-    }
-    out.push(cur); return out.map(clean);
-  };
-  const headers=parseLine(lines[0]).map(norm);
-  return lines.slice(1).map(l => {
-    const vals=parseLine(l), o={};
-    headers.forEach((h,i)=>o[h]=vals[i]??"");
-    return o;
-  });
-}
 function val(o, names) {
   for(const n of names) {
     const k=norm(n);
@@ -248,103 +200,6 @@ function rowsToRace(rows) {
   return out;
 }
 
-function excelCellText(v) {
-  if(v == null) return "";
-  if(typeof v === "number") return String(v);
-  if(v instanceof Date && !isNaN(v)) return v.toISOString();
-  return clean(v);
-}
-function excelTimeToText(v) {
-  if(v == null || v === "") return "";
-  if(typeof v === "number") {
-    let sec = Math.round(v * 86400);
-    if(sec >= 0 && sec <= 6*3600) {
-      const h=Math.floor(sec/3600), m=Math.floor((sec%3600)/60), ss=sec%60;
-      return h ? `${h}h${String(m).padStart(2,"0")}'${String(ss).padStart(2,"0")}`
-               : `${m}'${String(ss).padStart(2,"0")}`;
-    }
-  }
-  return clean(v);
-}
-function headerScore(labels) {
-  let score=0;
-  const joined=labels.join("|");
-  if(/NOM|NAME|ATHLETE|ATHLÈTE|COUREUR/.test(joined)) score+=4;
-  if(/PRENOM|PRÉNOM|FIRST/.test(joined)) score+=2;
-  if(/TEMPS|TIME|CHRONO|RESULTAT|RÉSULTAT/.test(joined)) score+=4;
-  if(/PLACE|POS|POSITION|RANG|CLASSEMENT/.test(joined)) score+=2;
-  if(/DOSSARD|BIB/.test(joined)) score+=1;
-  return score;
-}
-function parseExcelArray(rows) {
-  if(!rows || !rows.length) return [];
-  let bestHeader=-1, bestScore=-1, headers=[];
-  for(let i=0;i<Math.min(rows.length,50);i++) {
-    const labels=(rows[i]||[]).map(v=>norm(excelCellText(v)));
-    const sc=headerScore(labels);
-    if(sc>bestScore) { bestScore=sc; bestHeader=i; headers=labels; }
-  }
-  if(bestHeader<0 || bestScore<6) return [];
-
-  const out=[];
-  for(const rr of rows.slice(bestHeader+1)) {
-    if(!rr || !rr.some(v=>clean(v)!=="")) continue;
-    const o={};
-    headers.forEach((h,i)=>{ if(h) o[h]=rr[i] ?? ""; });
-
-    let nom=val(o,["NOM","LAST NAME","LASTNAME"]);
-    let prenom=val(o,["PRENOM","PRÉNOM","FIRST NAME","FIRSTNAME"]);
-    let full=val(o,["NOM COMPLET","ATHLETE","ATHLÈTE","COUREUR","PARTICIPANT","NAME"]);
-    if(!nom && full) [nom,prenom]=splitFullName(full);
-
-    let rawTime = null;
-    for(const alias of ["TEMPS","TIME","CHRONO","RESULTAT","RÉSULTAT","TEMPS OFFICIEL","OFFICIEL"]) {
-      const k=norm(alias);
-      if(o[k]!=null && o[k]!=="") { rawTime=o[k]; break; }
-    }
-    const temps=excelTimeToText(rawTime);
-    const pos=val(o,["PLACE","POSITION","RANG","CLASSEMENT","POS"]);
-    const cat=val(o,["CATEGORIE","CATÉGORIE","CAT"]);
-    const annee=val(o,["ANNEE NAISSANCE","ANNÉE NAISSANCE","ANNEE","YEAR","YOB"]);
-
-    if(nom && (prenom || full) && temps) out.push({pos,nom,prenom,temps,cat,annee,anneeRange:cat?ffaCategoryToYearRange(cat):null});
-  }
-  return out;
-}
-async function parseExcelFile(file) {
-  // GoTiming exporte actuellement certains ".xls" sous forme de HTML
-  // (table id="tabres") avec une extension Excel.
-  // On détecte d'abord ce cas avant d'utiliser SheetJS.
-  const buf = await file.arrayBuffer();
-
-  let text = "";
-  try {
-    text = new TextDecoder("utf-8").decode(buf);
-  } catch(e) {}
-
-  const head = text.slice(0, 4096).trim().toLowerCase();
-  if(head.startsWith("<table") || head.startsWith("<html") ||
-     head.includes('<table id="tabres"') || head.includes("<thead")) {
-    const parsed = parseHTML(text);
-    if(parsed.length) return parsed;
-  }
-
-  // Vrai fichier XLS/XLSX : fallback SheetJS.
-  if(typeof XLSX === "undefined") {
-    throw new Error("Ce fichier semble être un vrai Excel mais la bibliothèque XLSX n'est pas chargée.");
-  }
-
-  const wb = XLSX.read(buf, {type:"array", cellDates:true});
-  let best=[];
-  for(const sheetName of wb.SheetNames) {
-    const ws=wb.Sheets[sheetName];
-    const rows=XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:""});
-    const parsed=parseExcelArray(rows);
-    if(parsed.length>best.length) best=parsed;
-  }
-  return best;
-}
-
 function splitUtmbName(full) {
   full=clean(full);
   const parts=full.split(/\s+/).filter(Boolean);
@@ -360,30 +215,6 @@ function splitUtmbName(full) {
   if(surname.length && i>=0) return [surname.join(" "), parts.slice(0,i+1).join(" ")];
 
   return [parts[parts.length-1], parts.slice(0,-1).join(" ")];
-}
-function parseUtmbJSON(text) {
-  let d;
-  try { d=JSON.parse(text); } catch(e) { return []; }
-  const arr = Array.isArray(d.results) ? d.results : [];
-  return arr.map(x=>{
-    const [nom,prenom]=splitUtmbName(x.name||"");
-    return {
-      pos:String(x.rank||""),
-      nom, prenom,
-      temps:String(x.time||""),
-      cat:String(x.age_category||""),
-      annee:"",
-      anneeRange:utmbCategoryToYearRange(x.age_category),
-      source:"UTMB",
-      nationality:String(x.nationality||""),
-      gender:String(x.gender||""),
-      runner_url:String(x.runner_url||""),
-      runner_id:String(x.runner_id||""),
-      race:String(x.race||""),
-      race_date:String(x.race_date||""),
-      distance:String(x.distance||"")
-    };
-  }).filter(x=>x.nom && x.temps);
 }
 function parseHTML(text) {
   const doc = new DOMParser().parseFromString(text,"text/html");
@@ -630,7 +461,7 @@ function esc(s) {
   return (s??"").toString().replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 }
 function exportResultCSV(result, filename) {
-  const headers=["position","nom","prenom","temps_course","pb_10km_ffa","ecart_sec","ecart","course_pb","date_pb","club","match"];
+  const headers=["position","nom","prenom","temps_course","pb_ffa","ecart_sec","ecart","course_pb","date_pb","club","match"];
   const lines=[headers.join(";")];
   for(const x of result) {
     const p=x.p||{};
@@ -638,6 +469,6 @@ function exportResultCSV(result, filename) {
     lines.push(vals.map(v=>'"'+String(v??"").replace(/"/g,'""')+'"').join(";"));
   }
   const blob=new Blob(["\ufeff"+lines.join("\r\n")],{type:"text/csv;charset=utf-8"});
-  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=filename||"comparaison_ffa_10km.csv"; a.click();
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=filename||"comparaison_ffa.csv"; a.click();
   URL.revokeObjectURL(a.href);
 }

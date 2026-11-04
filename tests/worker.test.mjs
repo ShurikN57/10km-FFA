@@ -1,7 +1,7 @@
 // Tests du Worker avec une base D1 simulée (aucun accès réseau).
 import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
-import worker from '../cloudflare-prototype/worker.js';
+import worker from '../api/worker.js';
 
 const ORIGIN = 'https://shurikn57.github.io';
 
@@ -132,3 +132,35 @@ test('/match avec JSON invalide → 400', async () => {
   const res = await worker.fetch(req('/match?distance=10k', { method: 'POST', body: '{oops' }), { DB: mockDb() });
   assert.equal(res.status, 400);
 });
+
+// --- Cache des réponses -----------------------------------------------------
+function withFakeCache(fn) {
+  const store = new Map();
+  globalThis.caches = { default: {
+    async match(req) { const r = store.get(req.url); return r ? r.clone() : undefined; },
+    async put(req, res) { store.set(req.url, res); }
+  } };
+  return fn(store).finally(() => { delete globalThis.caches; });
+}
+const ctx = { waitUntil() {} };
+
+test('cache : la 2e requête identique ne touche pas la base, même avec les paramètres dans un autre ordre', () => withFakeCache(async (store) => {
+  const DB = mockDb();
+  const r1 = await worker.fetch(req('/ranking?distance=10k&sex=F&page=2'), { DB }, ctx);
+  assert.equal(r1.status, 200);
+  assert.match(r1.headers.get('cache-control'), /max-age=300/);
+  const calls = DB.calls.length;
+  const r2 = await worker.fetch(req('/ranking?page=2&sex=F&distance=10k'), { DB }, ctx);
+  assert.equal(r2.status, 200);
+  assert.equal(DB.calls.length, calls);
+  assert.equal(r2.headers.get('access-control-allow-origin'), ORIGIN);
+  assert.equal(store.size, 1);
+}));
+
+test('cache : erreurs, /health et /match ne sont pas mis en cache', () => withFakeCache(async (store) => {
+  const DB = mockDb();
+  await worker.fetch(req('/ranking?distance=42k'), { DB }, ctx);
+  await worker.fetch(req('/health'), { DB }, ctx);
+  await worker.fetch(req('/match?distance=10k', { method: 'POST', body: JSON.stringify({ names: ['DUPONT JEAN'] }) }), { DB }, ctx);
+  assert.equal(store.size, 0);
+}));
