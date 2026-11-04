@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Importer vers Comparateur 10km
 // @namespace    comparateur-10km-ffa
-// @version      1.3
+// @version      1.4
 // @description  Collecte un classement GoTiming, UTMB ou ACN Timing et l'envoie vers RP.
 // @match        https://*.gotiming.fr/*
 // @match        https://gotiming.fr/*
@@ -301,6 +301,21 @@
     return lines2.join('\n');
   }
 
+  var APP_URL = 'https://shurikn57.github.io/10km-FFA/mobile.html';
+
+  // Compression deflate puis base64 « URL » (sans + / =). null si le
+  // navigateur ne sait pas compresser (Safari < 16.4).
+  async function deflateBase64Url(text) {
+    if (typeof CompressionStream === 'undefined') return null;
+    try {
+      var stream = new Blob([text]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+      var bytes = new Uint8Array(await new Response(stream).arrayBuffer());
+      var bin = '';
+      for (var i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+      return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    } catch (e) { return null; }
+  }
+
   // ---------- Interface : bouton flottant + overlay de progression ----------
   function hasScannableContent() {
     var host = location.hostname.toLowerCase();
@@ -333,13 +348,22 @@
     overlay.style.cssText = 'display:none;position:fixed;z-index:2147483647;right:16px;bottom:70px;width:320px;max-width:88vw;background:#111;color:#fff;padding:14px;border-radius:12px;font:13px system-ui;box-shadow:0 8px 30px #0008;white-space:pre-line';
     document.body.appendChild(overlay);
 
+    function resetUI() {
+      btn.disabled = false;
+      overlay.style.display = 'none';
+      overlay.textContent = '';
+    }
+    // Retour arrière de Safari : la page revient du cache telle qu'elle était
+    // au moment de partir ; on remet le bouton dans son état normal.
+    window.addEventListener('pageshow', function (e) { if (e.persisted) resetUI(); });
+
     btn.addEventListener('click', async function () {
       overlay.style.display = 'block';
       overlay.textContent = 'Analyse de la page…';
       btn.disabled = true;
-      // Ouvre l'onglet immédiatement (dans le prolongement du tap) pour que
-      // Safari ne bloque pas l'ouverture une fois la collecte terminée.
-      var newTab = window.open('', '_blank');
+      // La collecte se fait dans cet onglet, qui reste au premier plan : sur
+      // iPhone, Safari met en pause un onglet en arrière-plan, ce qui bloquait
+      // l'ancienne version (onglet about:blank ouvert d'avance, jamais rempli).
       try {
         var host = location.hostname.toLowerCase();
         var source = '', rows = [];
@@ -358,14 +382,16 @@
         if (!rows.length) throw new Error('Aucun participant reconnu sur cette page.');
         overlay.textContent = rows.length + ' participants collectés. Ouverture du comparateur…';
         var text = buildText(source, rows);
-        var b64 = btoa(unescape(encodeURIComponent(text)));
-        var url = 'https://shurikn57.github.io/10km-FFA/mobile.html#import64=' + b64;
-        if (newTab) { newTab.location.href = url; }
-        else { window.open(url, '_blank'); }
-        overlay.textContent = rows.length + ' participants envoyés dans un nouvel onglet.';
-        btn.disabled = false;
+        // Compressé, le classement tient dans une adresse ~4× plus courte
+        // (indispensable pour les grosses courses). Repli sans compression sur
+        // les navigateurs trop anciens.
+        var packed = await deflateBase64Url(text);
+        var url = APP_URL + (packed ? '#importz=' + packed : '#import64=' + btoa(unescape(encodeURIComponent(text))));
+        // Même onglet : pas de fenêtre bloquée ni d'onglet en pause ; le bouton
+        // Retour ramène sur la page de résultats, avec le bouton réactivé.
+        resetUI();
+        location.href = url;
       } catch (e) {
-        if (newTab) { try { newTab.close(); } catch (e2) {} }
         overlay.textContent = 'Erreur : ' + (e && e.message ? e.message : e);
         btn.disabled = false;
       }
