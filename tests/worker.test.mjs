@@ -1,5 +1,5 @@
 // Tests du Worker avec une base D1 simulée (aucun accès réseau).
-import test from 'node:test';
+import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 import worker from '../cloudflare-prototype/worker.js';
 
@@ -65,13 +65,28 @@ for (const [raw, expected] of [['abc', 0], ['-5', 0], ['3', 200], ['99999999', 9
   });
 }
 
-test('category=M1 filtre sur les bonnes années de naissance', async () => {
-  const DB = mockDb();
-  await worker.fetch(req('/ranking?distance=10k&category=M1'), { DB });
-  const count = DB.calls.find((c) => /COUNT\(\*\)/.test(c.sql));
-  const season = new Date().getMonth() >= 8 ? new Date().getFullYear() + 1 : new Date().getFullYear();
-  assert.deepEqual(count.binds, ['10k', season - 44, season - 40]);
-});
+async function categoryCall(isoDate, path) {
+  mock.timers.enable({ apis: ['Date'], now: new Date(isoDate) });
+  try {
+    const DB = mockDb();
+    const res = await worker.fetch(req(path), { DB });
+    return { DB, res };
+  } finally { mock.timers.reset(); }
+}
+
+for (const [date, years, rankCol] of [
+  ['2026-03-01T12:00:00Z', [1982, 1986], 'cb.rank_category'],   // saison 2026
+  ['2026-10-01T12:00:00Z', [1983, 1987], 'ca.rank_category'],   // saison 2027
+  ['2027-10-01T12:00:00Z', [1983, 1987], 'ca.rank_category']    // reste 2027 : rangs D1 non recalculés
+]) {
+  test(`category=M1 le ${date.slice(0, 10)} → ${years.join('-')} avec ${rankCol}`, async () => {
+    const { DB } = await categoryCall(date, '/ranking?distance=10k&category=M1');
+    const count = DB.calls.find((c) => /COUNT\(\*\)/.test(c.sql));
+    assert.deepEqual(count.binds, ['10k', ...years]);
+    const rows = DB.calls.find((c) => /LIMIT \? OFFSET \?/.test(c.sql));
+    assert.match(rows.sql, new RegExp(rankCol.replace('.', '\\.') + ' AS rank'));
+  });
+}
 
 test('catégorie inconnue → 400', async () => {
   const res = await worker.fetch(req('/ranking?distance=10k&category=ZZ'), { DB: mockDb() });

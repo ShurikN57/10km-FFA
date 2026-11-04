@@ -167,10 +167,17 @@ function ffaSeasonYear(date) {
     .format(date||new Date()).split("-").map(Number);
   return m>=9 ? y+1 : y;
 }
+// Dernière saison dont les rangs par catégorie sont précalculés dans D1
+// (= RANK_CAT_AFTER_SEASON dans worker.js) : les catégories affichées ne la
+// dépassent pas, pour rester cohérentes avec les rangs.
+const FFA_LATEST_RANKED_SEASON = 2027;
+function ffaCategorySeasonYear(date) {
+  return Math.min(ffaSeasonYear(date), FFA_LATEST_RANKED_SEASON);
+}
 function ffaCategoryFromBirthYear(birthYear, seasonYear) {
   const y=Number(birthYear);
   if(!birthYear || !Number.isFinite(y)) return "";
-  const age=(seasonYear||ffaSeasonYear())-y;
+  const age=(seasonYear||ffaCategorySeasonYear())-y;
   for(const [code,minAge,maxAge] of FFA_SEASON_CATEGORY_AGES) {
     if(age>=minAge && (maxAge==null || age<=maxAge)) return code;
   }

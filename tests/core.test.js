@@ -170,3 +170,11 @@ test('computeResults : inconnu → none', () => {
   const [r] = core.computeResults([runner('INCONNU', 'Personne', '40:00')], ffa);
   assert.equal(r.status, 'none');
 });
+
+test('catégories calées sur la dernière saison classée dans D1', () => {
+  assert.equal(core.ffaCategorySeasonYear(new Date('2026-03-01T12:00:00Z')), 2026);
+  assert.equal(core.ffaCategorySeasonYear(new Date('2026-10-01T12:00:00Z')), 2027);
+  // Après le 1er septembre 2027, on reste en 2027 tant que D1 n'est pas recalculée.
+  assert.equal(core.ffaCategorySeasonYear(new Date('2027-10-01T12:00:00Z')), 2027);
+  assert.equal(core.ffaCategorySeasonYear(new Date('2030-01-01T12:00:00Z')), 2027);
+});

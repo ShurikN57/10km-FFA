@@ -69,7 +69,16 @@ function useAfterSepRankColumns() {
   return currentSeasonYear() >= RANK_CAT_AFTER_SEASON;
 }
 
-function categoryYears(category, seasonYear = currentSeasonYear()) {
+// Saison utilisée pour les catégories : la saison en cours, mais jamais au-delà
+// de la dernière saison dont les rangs sont précalculés dans D1. Sinon, à partir
+// du 1er septembre 2027, les tranches d'âge avanceraient alors que les rangs
+// resteraient ceux de 2027. Après recalcul des rangs, augmenter
+// RANK_CAT_AFTER_SEASON (et FFA_LATEST_RANKED_SEASON dans core.js).
+function categorySeasonYear() {
+  return Math.min(currentSeasonYear(), RANK_CAT_AFTER_SEASON);
+}
+
+function categoryYears(category, seasonYear = categorySeasonYear()) {
   const cat = String(category || '').toUpperCase();
   const entry = CATEGORY_AGES.find(([code]) => code === cat);
   if (!entry) return null;
@@ -77,7 +86,7 @@ function categoryYears(category, seasonYear = currentSeasonYear()) {
   return [maxAge == null ? null : seasonYear - maxAge, seasonYear - minAge];
 }
 
-function categoryBounds(birthYear, seasonYear = currentSeasonYear()) {
+function categoryBounds(birthYear, seasonYear = categorySeasonYear()) {
   const y = Number(birthYear);
   if (!Number.isFinite(y) || y <= 0) return null;
   const age = seasonYear - y;
