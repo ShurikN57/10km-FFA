@@ -164,3 +164,19 @@ test('cache : erreurs, /health et /match ne sont pas mis en cache', () => withFa
   await worker.fetch(req('/match?distance=10k', { method: 'POST', body: JSON.stringify({ names: ['DUPONT JEAN'] }) }), { DB }, ctx);
   assert.equal(store.size, 0);
 }));
+
+test('filtre saison : de 2024 à la saison en cours', async () => {
+  const seasonBind = async (iso, season) => {
+    mock.timers.enable({ apis: ['Date'], now: new Date(iso) });
+    try {
+      const DB = mockDb();
+      await worker.fetch(req(`/ranking?distance=10k&seasonYear=${season}`), { DB });
+      return DB.calls.some((c) => /substr\(a\.pb_date/.test(c.sql) && c.binds.includes(season));
+    } finally { mock.timers.reset(); }
+  };
+  assert.equal(await seasonBind('2026-11-04T12:00:00Z', 2027), true);   // saison en cours
+  assert.equal(await seasonBind('2026-11-04T12:00:00Z', 2024), true);
+  assert.equal(await seasonBind('2026-11-04T12:00:00Z', 2023), false);  // avant la collecte
+  assert.equal(await seasonBind('2026-11-04T12:00:00Z', 2028), false);  // future
+  assert.equal(await seasonBind('2027-10-01T12:00:00Z', 2028), true);
+});

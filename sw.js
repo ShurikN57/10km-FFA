@@ -1,6 +1,6 @@
 // Incrémenter à chaque modification de l'app : c'est ce changement qui fait
 // apparaître le bouton « MAJ disponible » (la CI le vérifie sur les PR).
-const SHELL_CACHE='comparateur-ffa-shell-v19';
+const SHELL_CACHE='comparateur-ffa-shell-v20';
 
 // Fichiers de l'app : servis depuis le cache (ouverture instantanée, même
 // hors ligne) puis rafraîchis en arrière-plan pour la prochaine ouverture.

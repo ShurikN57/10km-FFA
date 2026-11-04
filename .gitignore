@@ -1,4 +1,6 @@
 node_modules/
-# Fichier généré par api/prepare_import.py (plusieurs centaines de Mo)
-api/ffa_d1_import.sql
+# Fichiers générés par tools/build_db.py (plusieurs centaines de Mo)
+build/
+# Exports bruts de la collecte (gardés en local, voir data/README.md)
+data/exports/
 .DS_Store

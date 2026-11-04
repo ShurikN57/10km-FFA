@@ -84,6 +84,140 @@ def load_reference(directory=REFERENCE_DIR):
     return profiles
 
 
+# --- Exports bruts V3 (tools/ffa-collecte-bilans.js) ---------------------------
+
+EVENT_DISTANCE = {'252': '5k', '261': '10k', '271': 'semi', '295': 'marathon'}
+LABEL_DISTANCE = {'5 km': '5k', '10 km': '10k', 'semi-marathon': 'semi', 'marathon': 'marathon'}
+
+
+def parse_time(text):
+    """Performance FFA en secondes : 33'05'', 1h13'26'', 1:13:26, 33:05."""
+    s = str(text or '').strip()
+    m = re.search(r"(?:(\d{1,2})\s*h\s*)?(\d{1,3})\s*'\s*(\d{1,2})", s)
+    if m:
+        return int(m.group(1) or 0) * 3600 + int(m.group(2)) * 60 + int(m.group(3))
+    m = re.match(r'^(\d{1,2}):(\d{2}):(\d{2})', s)
+    if m:
+        return int(m.group(1)) * 3600 + int(m.group(2)) * 60 + int(m.group(3))
+    m = re.match(r'^(\d{1,3}):(\d{2})(?:[.,]\d+)?$', s)
+    if m:
+        return int(m.group(1)) * 60 + int(m.group(2))
+    m = re.match(r'^(\d{1,2})h(\d{2})$', s)  # 2h05 (minutes rondes)
+    if m:
+        return int(m.group(1)) * 3600 + int(m.group(2)) * 60
+    return None
+
+
+def parse_date(text):
+    """Date au format de la référence : JJ/MM/AA."""
+    m = re.match(r'^(\d{1,2})/(\d{1,2})/(\d{2}|\d{4})$', str(text or '').strip())
+    if not m:
+        return None
+    return f'{int(m.group(1)):02d}/{int(m.group(2)):02d}/{m.group(3)[-2:]}'
+
+
+def load_raw(paths):
+    """Performances des exports bruts, par distance, avec un rapport de lecture."""
+    perfs = {key: [] for key, _, _ in DISTANCES}
+    report = {'files': [], 'rows': 0, 'unreadable': 0, 'examples': []}
+    for path in paths:
+        with gzip.open(path, 'rt', encoding='utf-8') as f:
+            doc = json.load(f)
+        dist = EVENT_DISTANCE.get(str(doc.get('event'))) or LABEL_DISTANCE.get(str(doc.get('distance', '')).lower())
+        if not dist:
+            raise SystemExit(f'{path} : distance non reconnue')
+        n = 0
+        for ds in doc.get('datasets', []):
+            sex = ds.get('sex')
+            for r in ds.get('rows', []):
+                report['rows'] += 1
+                sec, name = parse_time(r[0]), str(r[1] or '').strip()
+                if sec is None or not name:
+                    report['unreadable'] += 1
+                    if len(report['examples']) < 5:
+                        report['examples'].append(r[:2])
+                    continue
+                birth = str(r[8] or '').strip() if len(r) > 8 else ''
+                perfs[dist].append({
+                    'full_name': name, 'birth_year': int(birth) if birth.isdigit() else None, 'sex': sex,
+                    'pb_sec': sec, 'pb_date': parse_date(r[6]), 'club': str(r[2] or '').strip() or None,
+                    'athlete_ffa_id': (str(r[9]).strip() or None) if len(r) > 9 and r[9] else None,
+                    'league': str(r[3] or '').strip() or None, 'department': str(r[4] or '').strip() or None,
+                    'season': ds.get('year'),
+                })
+                n += 1
+        report['files'].append((str(path), dist, n))
+    return perfs, report
+
+
+def identity(p):
+    """Un athlète = son identifiant FFA, sinon nom normalisé + année + sexe."""
+    if p.get('athlete_ffa_id'):
+        return ('id', str(p['athlete_ffa_id']))
+    return ('nbs', name_key(p['full_name']), p.get('birth_year'), p.get('sex'))
+
+
+def merge(profiles, perfs):
+    """Fusionne les performances brutes dans les profils (meilleur temps conservé).
+
+    Retourne les nouveaux profils et le nombre de profils améliorés / créés.
+    """
+    out = {}
+    stats = {'improved': 0, 'new': 0, 'unchanged': 0, 'linked_id': 0}
+    for key, _, _ in DISTANCES:
+        plist = [dict(p) for p in profiles[key]]
+        by_id, by_nbs = {}, {}
+        for p in plist:
+            if p.get('athlete_ffa_id'):
+                by_id.setdefault(str(p['athlete_ffa_id']), p)
+            else:
+                by_nbs.setdefault(identity(p), []).append(p)
+        # Meilleure performance de la nouvelle saison pour chaque athlète.
+        best = {}
+        for perf in perfs.get(key, []):
+            k = identity(perf)
+            if k not in best or perf['pb_sec'] < best[k]['pb_sec']:
+                best[k] = perf
+        for k, perf in best.items():
+            p = None
+            if k[0] == 'id':
+                p = by_id.get(k[1])
+                if p is None:
+                    # Profil connu sans identifiant (même nom, année, sexe) : on le
+                    # relie seulement s'il est unique, comme à l'import d'origine.
+                    cands = by_nbs.get(('nbs', name_key(perf['full_name']), perf.get('birth_year'), perf.get('sex')), [])
+                    if len(cands) == 1:
+                        p = cands[0]
+                        by_nbs[identity(p)].remove(p)
+                        p['athlete_ffa_id'] = perf['athlete_ffa_id']
+                        by_id[k[1]] = p
+                        stats['linked_id'] += 1
+            else:
+                cands = by_nbs.get(k, [])
+                p = cands[0] if cands else None
+            if p is None:
+                new = {c: perf.get(c) for c in ('full_name', 'birth_year', 'sex', 'pb_sec', 'pb_date', 'club',
+                                                 'athlete_ffa_id', 'league', 'department')}
+                plist.append(new)
+                if new['athlete_ffa_id']:
+                    by_id[str(new['athlete_ffa_id'])] = new
+                else:
+                    by_nbs.setdefault(identity(new), []).append(new)
+                stats['new'] += 1
+            elif perf['pb_sec'] < int(p['pb_sec']):
+                for c in ('pb_sec', 'pb_date', 'club', 'league', 'department'):
+                    p[c] = perf.get(c)
+                if p.get('birth_year') is None and perf.get('birth_year') is not None:
+                    p['birth_year'] = perf['birth_year']
+                stats['improved'] += 1
+            else:
+                if p.get('birth_year') is None and perf.get('birth_year') is not None:
+                    p['birth_year'] = perf['birth_year']
+                stats['unchanged'] += 1
+        out[key] = plist
+    return out, stats
+
+
 # --- Construction de la base ---------------------------------------------------
 
 def create_schema(db):
@@ -132,9 +266,12 @@ def build_derived(db, season_before, season_after):
                ROW_NUMBER() OVER (PARTITION BY distance ORDER BY pb_sec, full_name, id)
         FROM athletes;
 
+        -- Rang parmi TOUS les athlètes de la distance (vérifié sur la production),
+        -- limité aux athlètes sans suffixe de nationalité.
         INSERT INTO athlete_french_rank(athlete_id, distance, rank_general)
-        SELECT id, distance, RANK() OVER (PARTITION BY distance ORDER BY pb_sec)
-        FROM athletes WHERE {FRENCH_SQL};
+        SELECT a.id, a.distance, g.rank
+        FROM athletes a JOIN athlete_general_rank g ON g.athlete_id = a.id
+        WHERE a.{FRENCH_SQL};
 
         CREATE TEMP TABLE cats AS
         SELECT id, distance, sex, pb_sec, birth_year, {cat_b} AS cat_b, {cat_a} AS cat_a FROM athletes;
@@ -188,6 +325,52 @@ def build(out, profiles, season_before=2026, season_after=2027):
     return db, n
 
 
+# --- Export SQL pour une nouvelle base D1 ----------------------------------------
+
+EXPORT_TABLES = [
+    ('athletes', 'id,distance,full_name,name_key,birth_year,sex,pb_sec,pb_course,pb_date,club,athlete_ffa_id'),
+    ('athlete_general_rank', 'athlete_id,distance,rank,display_order'),
+    ('athlete_french_rank', 'athlete_id,distance,rank_general'),
+    ('athlete_search_rank', 'athlete_id,rank_general,rank_sex,rank_cat_before_sep,rank_cat_after_sep'),
+    ('athlete_rank_cat_before', 'athlete_id,rank_category'),
+    ('athlete_rank_cat_after', 'athlete_id,rank_category'),
+    ('athlete_rank_year', 'athlete_id,rank_year,rank_sex_year'),
+    ('athlete_scope', 'athlete_id,distance,league,department,race_year'),
+    ('ffa_scope_options', 'distance,league,department,club,race_year'),
+    ('ffa_distance_stats', 'distance,total'),
+    ('ffa_french_stats', 'distance,total'),
+]
+
+
+def sql_value(v):
+    if v is None:
+        return 'NULL'
+    if isinstance(v, (int, float)):
+        return str(v)
+    return "'" + str(v).replace("'", "''") + "'"
+
+
+def export_sql(db, path, batch=500):
+    """Fichier SQL complet (schéma + données) pour une base D1 VIDE :
+    npx wrangler d1 execute <nouvelle-base> --remote --file <fichier>."""
+    with open(path, 'w', encoding='utf-8', newline='\n') as out:
+        out.write('-- Base complète du comparateur, générée par tools/build_db.py.\n')
+        out.write('-- À importer dans une base D1 vide (jamais dans la base en service).\n')
+        out.write(SCHEMA.read_text(encoding='utf-8'))
+        for migration in sorted(MIGRATIONS.glob('*.sql')):
+            out.write('\n' + migration.read_text(encoding='utf-8'))
+        out.write('\n')
+        for table, cols in EXPORT_TABLES + [('athlete_fts', 'rowid,name_key,distance')]:
+            q = f'SELECT {cols} FROM {table}' if table != 'athlete_fts' else 'SELECT id,name_key,distance FROM athletes'
+            rows = db.execute(q)
+            while True:
+                chunk = rows.fetchmany(batch)
+                if not chunk:
+                    break
+                out.write(f'INSERT INTO {table}({cols}) VALUES ' +
+                          ','.join('(' + ','.join(sql_value(v) for v in r) + ')' for r in chunk) + ';\n')
+
+
 # --- Empreintes de contrôle (comparables avec la production) --------------------
 
 FINGERPRINTS = {
@@ -215,12 +398,29 @@ def main(argv=None):
     ap.add_argument('--out', required=True, help='fichier SQLite à produire')
     ap.add_argument('--season-before', type=int, default=2026, help='saison des rangs « avant septembre »')
     ap.add_argument('--season-after', type=int, default=2027, help='saison des rangs « après septembre »')
+    ap.add_argument('--raw', nargs='*', default=[], help='exports bruts V3 à fusionner (une saison ou plus)')
+    ap.add_argument('--sql', help='écrit aussi le SQL complet pour une nouvelle base D1')
     ap.add_argument('--fingerprints', action='store_true', help='affiche les empreintes de contrôle')
+    ap.add_argument('--max-unreadable', type=float, default=0.005, help='part maximale de lignes illisibles (défaut 0,5 %%)')
     args = ap.parse_args(argv)
     t = time.time()
     profiles = load_reference()
+    if args.raw:
+        perfs, report = load_raw(args.raw)
+        for path, dist, n in report['files']:
+            print(f'  {path} : {dist}, {n:,} performances')
+        share = report['unreadable'] / max(1, report['rows'])
+        print(f'  lignes illisibles : {report["unreadable"]:,} / {report["rows"]:,} ({share:.2%}) {report["examples"]}')
+        if share > args.max_unreadable:
+            raise SystemExit('Trop de lignes illisibles : format de l\'export à vérifier, aucune base produite.')
+        profiles, stats = merge(profiles, perfs)
+        print(f'  fusion : {stats["improved"]:,} records améliorés, {stats["new"]:,} nouveaux profils, '
+              f'{stats["unchanged"]:,} inchangés, {stats["linked_id"]:,} identifiants FFA reliés')
     db, n = build(args.out, profiles, args.season_before, args.season_after)
     print(f'{n:,} profils, base écrite dans {args.out} ({os.path.getsize(args.out) // 2**20} Mo, {time.time() - t:.0f} s)')
+    if args.sql:
+        export_sql(db, args.sql)
+        print(f'SQL pour une nouvelle base D1 : {args.sql} ({os.path.getsize(args.sql) // 2**20} Mo)')
     if args.fingerprints:
         print(json.dumps(fingerprints(db), ensure_ascii=False))
     db.close()

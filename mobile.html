@@ -420,7 +420,7 @@ th{background:#141922}
   </main>
   <details class="legal-note">
     <summary>Données &amp; vie privée</summary>
-    <p>Les performances affichées proviennent des bilans publics de la Fédération Française d'Athlétisme (<a href="https://www.athle.fr" rel="noopener">athle.fr</a>) pour les saisons 2024 à 2026 : nom, année de naissance, sexe, club et meilleure performance. RP est un outil indépendant, non affilié à la FFA.</p>
+    <p>Les performances affichées proviennent des bilans publics de la Fédération Française d'Athlétisme (<a href="https://www.athle.fr" rel="noopener">athle.fr</a>) depuis la saison 2024 : nom, année de naissance, sexe, club et meilleure performance. RP est un outil indépendant, non affilié à la FFA.</p>
     <p>Les classements de course que vous importez restent sur votre appareil ; seuls les noms sont envoyés au serveur pour retrouver les profils FFA correspondants, sans être conservés.</p>
     <p>Pour demander la rectification ou le retrait de vos données, ouvrez une demande sur <a href="https://github.com/ShurikN57/10km-FFA/issues" rel="noopener">GitHub</a>.</p>
   </details>
@@ -740,7 +740,7 @@ function populateFfaScopeOptions(){
   const activeDepartment=String($('ffaFullDepartment')?.value||'');
   const clubs=[...new Set(ffaScopeOptionRows.filter(row=>(!activeLeague||row.league===activeLeague)&&(!activeDepartment||row.department===activeDepartment)).map(row=>String(row.club||'').trim()).filter(value=>value&&!/^NL la veille/i.test(value)))].sort((a,b)=>a.localeCompare(b,'fr'));
   setFfaScopeSelect('ffaFullClub',clubs,'Tous');
-  setFfaScopeSelect('ffaFullRaceYear',[2024,2025,2026],'Toutes');
+  setFfaScopeSelect('ffaFullRaceYear',Array.from({length:ffaSeasonYear()-FFA_FIRST_SEASON+1},(_,i)=>FFA_FIRST_SEASON+i),'Toutes');
   syncFfaFilterUi();
 }
 async function loadFfaScopeOptions(){
