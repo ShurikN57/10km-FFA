@@ -20,8 +20,13 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - name: Validate Worker syntax
         run: node --check cloudflare-prototype/worker.js
+      - name: Run tests
+        run: npm test
       - name: Deploy Worker
         working-directory: cloudflare-prototype
         run: npx --yes wrangler@4.157.0 deploy

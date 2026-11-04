@@ -1,3 +1,8 @@
+-- SCHÉMA PARTIEL : seule la table `athletes` est définie ici.
+-- Le Worker utilise aussi des tables précalculées (FTS, rangs, statistiques)
+-- qui ne sont pas encore versionnées. Voir README.md, section « Schéma de la base ».
+-- ⚠️ DROP TABLE : exécuter ce fichier efface les profils existants.
+
 DROP TABLE IF EXISTS athletes;
 
 CREATE TABLE athletes (

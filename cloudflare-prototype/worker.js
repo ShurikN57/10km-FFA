@@ -94,6 +94,15 @@ const MAX_PAGE = 10000;
 export default {
   async fetch(request, env) {
     try {
+      if (request.method !== 'OPTIONS' && env.RATE_LIMITER) {
+        const key = request.headers.get('CF-Connecting-IP') || 'unknown';
+        const { success } = await env.RATE_LIMITER.limit({ key });
+        if (!success) {
+          const res = json(request, { error: 'rate_limited' }, 429);
+          res.headers.set('Retry-After', '60');
+          return res;
+        }
+      }
       return await handle(request, env);
     } catch (err) {
       console.error('Unhandled error', err && err.stack ? err.stack : err);
@@ -301,6 +310,8 @@ async function handle(request, env) {
         if (club) { scopeWhere.push('a.club = ?'); scopeBinds.push(club); }
         if (frenchOnly) scopeWhere.push("a.full_name NOT GLOB '* ([A-Z][A-Z][A-Z])'");
         if (seasonYear) {
+          // pb_date est au format JJ/MM/AA ; la saison N va du 01/09/N-1 au 31/08/N.
+          scopeWhere.push("a.pb_date GLOB '[0-9][0-9]/[0-9][0-9]/[0-9][0-9]'");
           scopeWhere.push("2000 + CAST(substr(a.pb_date, 7, 2) AS INTEGER) + CASE WHEN CAST(substr(a.pb_date, 4, 2) AS INTEGER) >= 9 THEN 1 ELSE 0 END = ?");
           scopeBinds.push(seasonYear);
         }

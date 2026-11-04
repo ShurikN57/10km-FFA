@@ -202,6 +202,10 @@ th{background:#141922}
 .ranking-sex-segments button{height:34px;min-height:34px;padding:3px 8px;border:0;border-radius:9px;background:transparent;color:#aeb7c5;font-size:12px;font-weight:800;box-shadow:none}
 .ranking-sex-segments button.active{background:#3b82f6;color:#fff}
 .ranking-shortcuts .ranking-quick-btn{display:flex;align-items:center;justify-content:center;width:100%;min-width:0;height:42px;min-height:42px;padding:6px 12px;border-radius:12px;font-size:12px}
+.legal-note{margin:18px 2px calc(110px + env(safe-area-inset-bottom));color:var(--muted);font-size:12px;line-height:1.5}
+.legal-note summary{cursor:pointer;font-weight:700;padding:6px 0}
+.legal-note p{margin:6px 0}
+.legal-note a{color:var(--accent)}
 .ffa-filter-drawer{display:none;position:fixed;inset:0;z-index:1400}
 .ffa-filter-drawer.show{display:block}
 .ffa-filter-backdrop{position:absolute;inset:0;border:0;border-radius:0;background:rgba(0,0,0,.64);backdrop-filter:blur(3px)}
@@ -415,6 +419,12 @@ th{background:#141922}
       </div>
     </section>
   </main>
+  <details class="legal-note">
+    <summary>Données &amp; vie privée</summary>
+    <p>Les performances affichées proviennent des bilans publics de la Fédération Française d'Athlétisme (<a href="https://www.athle.fr" rel="noopener">athle.fr</a>) pour les saisons 2024 à 2026 : nom, année de naissance, sexe, club et meilleure performance. RP est un outil indépendant, non affilié à la FFA.</p>
+    <p>Les classements de course que vous importez restent sur votre appareil ; seuls les noms sont envoyés au serveur pour retrouver les profils FFA correspondants, sans être conservés.</p>
+    <p>Pour demander la rectification ou le retrait de vos données, ouvrez une demande sur <a href="https://github.com/ShurikN57/10km-FFA/issues" rel="noopener">GitHub</a>.</p>
+  </details>
 </div>
 
 <nav class="app-tabbar-shell" aria-label="Navigation principale">
