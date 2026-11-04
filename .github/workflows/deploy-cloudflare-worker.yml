@@ -24,4 +24,4 @@ jobs:
         run: node --check cloudflare-prototype/worker.js
       - name: Deploy Worker
         working-directory: cloudflare-prototype
-        run: npx --yes wrangler@latest deploy
+        run: npx --yes wrangler@4.157.0 deploy

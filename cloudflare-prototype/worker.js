@@ -39,65 +39,70 @@ function ftsQueryFromName(value) {
   return tokens.map((t) => `"${t.replace(/"/g, '""')}"`).join(' AND ');
 }
 
-function categoryBounds(birthYear) {
+// Catégories FFA : l'âge se calcule sur l'année de fin de saison.
+// La saison N commence le 1er septembre N-1 (heure de Paris).
+const CATEGORY_AGES = [
+  ['CA', 16, 17], ['JU', 18, 19], ['ES', 20, 22], ['SE', 23, 34],
+  ['M0', 35, 39], ['M1', 40, 44], ['M2', 45, 49], ['M3', 50, 54],
+  ['M4', 55, 59], ['M5', 60, 64], ['M6', 65, 69], ['M7', 70, 74],
+  ['M8', 75, 79], ['M9', 80, 84], ['M10', 85, null]
+];
+
+// Les rangs par catégorie sont précalculés dans D1 pour deux saisons :
+// rank_cat_before_sep = saison 2026, rank_cat_after_sep = saison 2027.
+// À chaque nouvelle saison, il faut recalculer ces colonnes dans D1.
+const RANK_CAT_AFTER_SEASON = 2027;
+
+function parisDateParts(date = new Date()) {
+  const [y, m] = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit'
+  }).format(date).split('-').map(Number);
+  return { year: y, month: m };
+}
+
+function currentSeasonYear(date = new Date()) {
+  const { year, month } = parisDateParts(date);
+  return month >= 9 ? year + 1 : year;
+}
+
+function useAfterSepRankColumns() {
+  return currentSeasonYear() >= RANK_CAT_AFTER_SEASON;
+}
+
+function categoryYears(category, seasonYear = currentSeasonYear()) {
+  const cat = String(category || '').toUpperCase();
+  const entry = CATEGORY_AGES.find(([code]) => code === cat);
+  if (!entry) return null;
+  const [, minAge, maxAge] = entry;
+  return [maxAge == null ? null : seasonYear - maxAge, seasonYear - minAge];
+}
+
+function categoryBounds(birthYear, seasonYear = currentSeasonYear()) {
   const y = Number(birthYear);
-  if (!Number.isFinite(y)) return null;
-  const afterSep2026 = new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Paris',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()) >= '2026-09-01';
-  if (afterSep2026) {
-    if (y >= 2010 && y <= 2011) return [2010, 2011, 'CA'];
-    if (y >= 2008 && y <= 2009) return [2008, 2009, 'JU'];
-    if (y >= 2005 && y <= 2007) return [2005, 2007, 'ES'];
-    if (y >= 1993 && y <= 2004) return [1993, 2004, 'SE'];
-    if (y >= 1988 && y <= 1992) return [1988, 1992, 'M0'];
-    if (y >= 1983 && y <= 1987) return [1983, 1987, 'M1'];
-    if (y >= 1978 && y <= 1982) return [1978, 1982, 'M2'];
-    if (y >= 1973 && y <= 1977) return [1973, 1977, 'M3'];
-    if (y >= 1968 && y <= 1972) return [1968, 1972, 'M4'];
-    if (y >= 1963 && y <= 1967) return [1963, 1967, 'M5'];
-    if (y >= 1958 && y <= 1962) return [1958, 1962, 'M6'];
-    if (y >= 1953 && y <= 1957) return [1953, 1957, 'M7'];
-    if (y >= 1948 && y <= 1952) return [1948, 1952, 'M8'];
-    if (y >= 1943 && y <= 1947) return [1943, 1947, 'M9'];
-    if (y <= 1942) return [null, 1942, 'M10'];
-    return null;
+  if (!Number.isFinite(y) || y <= 0) return null;
+  const age = seasonYear - y;
+  for (const [code, minAge, maxAge] of CATEGORY_AGES) {
+    if (age >= minAge && (maxAge == null || age <= maxAge)) {
+      return [maxAge == null ? null : seasonYear - maxAge, seasonYear - minAge, code];
+    }
   }
-  if (y >= 2009 && y <= 2010) return [2009, 2010, 'CA'];
-  if (y >= 2007 && y <= 2008) return [2007, 2008, 'JU'];
-  if (y >= 2004 && y <= 2006) return [2004, 2006, 'ES'];
-  if (y >= 1992 && y <= 2003) return [1992, 2003, 'SE'];
-  if (y >= 1987 && y <= 1991) return [1987, 1991, 'M0'];
-  if (y >= 1982 && y <= 1986) return [1982, 1986, 'M1'];
-  if (y >= 1977 && y <= 1981) return [1977, 1981, 'M2'];
-  if (y >= 1972 && y <= 1976) return [1972, 1976, 'M3'];
-  if (y >= 1967 && y <= 1971) return [1967, 1971, 'M4'];
-  if (y >= 1962 && y <= 1966) return [1962, 1966, 'M5'];
-  if (y >= 1957 && y <= 1961) return [1957, 1961, 'M6'];
-  if (y >= 1952 && y <= 1956) return [1952, 1956, 'M7'];
-  if (y >= 1947 && y <= 1951) return [1947, 1951, 'M8'];
-  if (y >= 1942 && y <= 1946) return [1942, 1946, 'M9'];
-  if (y <= 1941) return [null, 1941, 'M10'];
   return null;
 }
 
-function categoryYears(category) {
-  const cat = String(category || '').toUpperCase();
-  const afterSep2026 = new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Paris',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()) >= '2026-09-01';
-  const groups = afterSep2026 ? {
-    CA:[2010,2011], JU:[2008,2009], ES:[2005,2007], SE:[1993,2004],
-    M0:[1988,1992], M1:[1983,1987], M2:[1978,1982], M3:[1973,1977],
-    M4:[1968,1972], M5:[1963,1967], M6:[1958,1962], M7:[1953,1957],
-    M8:[1948,1952], M9:[1943,1947], M10:[null,1942]
-  } : {
-    CA:[2009,2010], JU:[2007,2008], ES:[2004,2006], SE:[1992,2003],
-    M0:[1987,1991], M1:[1982,1986], M2:[1977,1981], M3:[1972,1976],
-    M4:[1967,1971], M5:[1962,1966], M6:[1957,1961], M7:[1952,1956],
-    M8:[1947,1951], M9:[1942,1946], M10:[null,1941]
-  };
-  return groups[cat] || null;
-}
+const MAX_PAGE = 10000;
 
 export default {
   async fetch(request, env) {
+    try {
+      return await handle(request, env);
+    } catch (err) {
+      console.error('Unhandled error', err && err.stack ? err.stack : err);
+      return json(request, { error: 'internal_error' }, 500);
+    }
+  }
+};
+
+async function handle(request, env) {
     if (request.method === 'OPTIONS') return new Response(null, { headers: corsHeaders(request) });
 
     const url = new URL(request.url);
@@ -146,7 +151,7 @@ export default {
 
       const ftsQuery = ftsQueryFromName(q);
       if (!ftsQuery) return json(request, { rows: [] });
-      const afterSep2026 = new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Paris',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()) >= '2026-09-01';
+      const afterSep2026 = useAfterSepRankColumns();
       const rankColumn = mode === 'general'
         ? 'rank_general'
         : mode === 'category'
@@ -204,7 +209,8 @@ export default {
       const q = normalizeName(url.searchParams.get('q'));
       const frenchOnly = url.searchParams.get('french') === '1';
       const ftsQuery = q.length >= 3 ? ftsQueryFromName(q) : '';
-      const page = Math.max(1, Number(url.searchParams.get('page') || 1));
+      const pageRaw = Number.parseInt(url.searchParams.get('page') || '1', 10);
+      const page = Number.isFinite(pageRaw) ? Math.min(Math.max(1, pageRaw), MAX_PAGE) : 1;
       const pageSize = 100;
       const offset = (page - 1) * pageSize;
       const sortRaw = String(url.searchParams.get('sort') || 'rank').toLowerCase();
@@ -357,7 +363,7 @@ export default {
       if (ftsQuery) { where.push('a.id IN (SELECT rowid FROM athlete_fts WHERE athlete_fts MATCH ?)'); binds.push(ftsQuery); }
       else if (q) { where.push('a.name_key LIKE ?'); binds.push(`%${q}%`); }
 
-      const afterSep2026 = new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Paris',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()) >= '2026-09-01';
+      const afterSep2026 = useAfterSepRankColumns();
       let rankExpr = 'sr.rank_general';
       if (year) rankExpr = sex ? 'yr.rank_sex_year' : 'yr.rank_year';
       else if (category) {
@@ -400,5 +406,4 @@ export default {
     }
 
     return json(request, { error: 'not_found' }, 404);
-  }
-};
+}

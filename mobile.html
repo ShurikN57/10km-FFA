@@ -452,7 +452,7 @@ let ffaLoadingDistance=null;
 
 const FFA_DISTANCES={
   "5k":{label:"5 km",file:"./ffa_5km_2024_2026.json.gz",export:"comparaison_ffa_5km.csv",minPb:"Ex. 15:00",maxPb:"Ex. 20:00"},
-  "10k":{label:"10 km",file:"./ffa_10km_2024_2026_compact.json.gz",fallbackFile:"./ffa_base.json.gz",export:"comparaison_ffa_10km.csv",minPb:"Ex. 30:00",maxPb:"Ex. 35:00"},
+  "10k":{label:"10 km",file:"./ffa_base.json.gz",export:"comparaison_ffa_10km.csv",minPb:"Ex. 30:00",maxPb:"Ex. 35:00"},
   "semi":{label:"Semi-marathon",file:"./ffa_semi_2024_2026.json.gz",export:"comparaison_ffa_semi.csv",minPb:"Ex. 1:05:00",maxPb:"Ex. 1:30:00"},
   "marathon":{label:"Marathon",file:"./ffa_marathon_2024_2026.json.gz",export:"comparaison_ffa_marathon.csv",minPb:"Ex. 2:15:00",maxPb:"Ex. 3:30:00"}
 };
@@ -531,47 +531,7 @@ let ffaSexRank=new Map();
 let ffaCategoryRank=new Map();
 let ffaGeneralRows=[];
 function currentFfaCategory(p){
-  const y=Number(p.annee_naissance);
-  if(!Number.isFinite(y)) return "";
-  const afterSep2026 = new Date() >= new Date("2026-09-01T00:00:00");
-  if(afterSep2026){
-    if(y>=2005 && y<=2007) return "ES";
-    if(y>=1993 && y<=2004) return "SE";
-    if(y<=1992){
-      if(y>=1988) return "M0";
-      if(y>=1983) return "M1";
-      if(y>=1978) return "M2";
-      if(y>=1973) return "M3";
-      if(y>=1968) return "M4";
-      if(y>=1963) return "M5";
-      if(y>=1958) return "M6";
-      if(y>=1953) return "M7";
-      if(y>=1948) return "M8";
-      if(y>=1943) return "M9";
-      return "M10";
-    }
-    if(y>=2008 && y<=2009) return "JU";
-    if(y>=2010 && y<=2011) return "CA";
-    return "";
-  }
-  if(y>=2004 && y<=2006) return "ES";
-  if(y>=1992 && y<=2003) return "SE";
-  if(y<=1991){
-    if(y>=1987) return "M0";
-    if(y>=1982) return "M1";
-    if(y>=1977) return "M2";
-    if(y>=1972) return "M3";
-    if(y>=1967) return "M4";
-    if(y>=1962) return "M5";
-    if(y>=1957) return "M6";
-    if(y>=1952) return "M7";
-    if(y>=1947) return "M8";
-    if(y>=1942) return "M9";
-    return "M10";
-  }
-  if(y>=2007 && y<=2008) return "JU";
-  if(y>=2009 && y<=2010) return "CA";
-  return "";
+  return ffaCategoryFromBirthYear(p && p.annee_naissance);
 }
 function assignRanks(arr,map){
   arr.sort((a,b)=>Number(a.pb_sec)-Number(b.pb_sec));
@@ -1331,10 +1291,7 @@ $("restoreBtn").onclick=()=>{
 setImportEnabled(false);
 async function loadFfaRows(distance){
   const cfg=FFA_DISTANCES[distance];
-  let r=await fetch(cfg.file+"?v=20260909b",{cache:"no-store"});
-  if(!r.ok && cfg.fallbackFile){
-    r=await fetch(cfg.fallbackFile+"?v=20260909b",{cache:"no-store"});
-  }
+  const r=await fetch(cfg.file+"?v=20260909b",{cache:"no-store"});
   if(!r.ok) throw new Error("HTTP "+r.status);
   if(!("DecompressionStream" in window)) throw new Error("Décompression gzip non prise en charge par ce navigateur");
   if(!r.body) throw new Error("Flux de la base FFA indisponible");
