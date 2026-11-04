@@ -348,6 +348,15 @@
     overlay.style.cssText = 'display:none;position:fixed;z-index:2147483647;right:16px;bottom:70px;width:320px;max-width:88vw;background:#111;color:#fff;padding:14px;border-radius:12px;font:13px system-ui;box-shadow:0 8px 30px #0008;white-space:pre-line';
     document.body.appendChild(overlay);
 
+    function resetUI() {
+      btn.disabled = false;
+      overlay.style.display = 'none';
+      overlay.textContent = '';
+    }
+    // Retour arrière de Safari : la page revient du cache telle qu'elle était
+    // au moment de partir ; on remet le bouton dans son état normal.
+    window.addEventListener('pageshow', function (e) { if (e.persisted) resetUI(); });
+
     btn.addEventListener('click', async function () {
       overlay.style.display = 'block';
       overlay.textContent = 'Analyse de la page…';
@@ -379,7 +388,8 @@
         var packed = await deflateBase64Url(text);
         var url = APP_URL + (packed ? '#importz=' + packed : '#import64=' + btoa(unescape(encodeURIComponent(text))));
         // Même onglet : pas de fenêtre bloquée ni d'onglet en pause ; le bouton
-        // Retour ramène sur la page de résultats.
+        // Retour ramène sur la page de résultats, avec le bouton réactivé.
+        resetUI();
         location.href = url;
       } catch (e) {
         overlay.textContent = 'Erreur : ' + (e && e.message ? e.message : e);
