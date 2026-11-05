@@ -1,0 +1,124 @@
+name: Préparer la nouvelle D1 (sans bascule)
+
+on:
+  push:
+    branches: [main]
+    paths: ['data/d1-import-request.json']
+  workflow_dispatch:
+    inputs:
+      validation_run:
+        description: 'ID du run de reconstruction validé sur main'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ffa-d1-candidate
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Tester les protections de production
+        run: python3 tests/test_import_d1_candidate.py
+      - name: Lire la demande
+        id: request
+        env:
+          VALIDATION_RUN: ${{ inputs.validation_run }}
+        run: |
+          python3 - <<'PY'
+          import json, os, re
+          from pathlib import Path
+          value = os.environ['VALIDATION_RUN']
+          if os.environ['GITHUB_EVENT_NAME'] == 'push':
+              value = str(json.loads(Path('data/d1-import-request.json').read_text())['validation_run'])
+          if not re.fullmatch(r'[1-9][0-9]*', value):
+              raise SystemExit('ID de validation invalide')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
+              out.write(f'run={value}\n')
+          PY
+      - name: Vérifier les fichiers et leur provenance GitHub
+        uses: actions/github-script@v7
+        env:
+          VALIDATION_RUN: ${{ steps.request.outputs.run }}
+        with:
+          script: |
+            const run_id = Number(process.env.VALIDATION_RUN);
+            const repo = {...context.repo, run_id};
+            const {data: run} = await github.rest.actions.getWorkflowRun(repo);
+            if (run.conclusion !== 'success' || run.head_branch !== 'main' ||
+                run.head_repository?.full_name !== `${context.repo.owner}/${context.repo.repo}` ||
+                run.path !== '.github/workflows/validate-ffa.yml') {
+              throw new Error('Reconstruction validée de ce dépôt sur main requise');
+            }
+            const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts, repo);
+            for (const prefix of ['ffa-validation-', 'ffa-base-validee-']) {
+              if (!artifacts.some(a => a.name === `${prefix}${run_id}` && !a.expired)) {
+                throw new Error('Fichiers validés absents ou expirés');
+              }
+            }
+      - name: Télécharger le rapport validé
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.request.outputs.run }}
+          name: ffa-validation-${{ steps.request.outputs.run }}
+          path: build/source
+      - name: Créer une base D1 distincte
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          VALIDATION_RUN: ${{ steps.request.outputs.run }}
+        run: python3 tools/import_d1_candidate.py create --folder build/source --state build/d1/candidate.json --validation-run "$VALIDATION_RUN"
+      - name: Télécharger la base et le SQL validés
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.request.outputs.run }}
+          name: ffa-base-validee-${{ steps.request.outputs.run }}
+          path: build/source
+      - name: Importer puis contrôler la nouvelle D1
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: python3 tools/import_d1_candidate.py import --folder build/source --state build/d1/candidate.json
+      - name: Résumé
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          p=Path('build/d1/candidate.json')
+          lines=['## Préparation D1 hors production', '']
+          if p.exists():
+              r=json.loads(p.read_text())
+              lines += [f"Base : {r['database_name']}", f"Identifiant : {r['database_id']}",
+                        f"État : {r['status']}. Prête : {r['ready']}.",
+                        f"Profils attendus : {r['expected_profiles']}.",
+                        f"Contrôles distants réussis : {sum(c['ok'] for c in r.get('checks', []))}."]
+          else:
+              lines += ['Préparation interrompue avant création de la base : consulter le journal.']
+          lines += ['', 'Le binding de production et les caches n’ont pas été modifiés. Aucune ancienne base supprimée.']
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as out:
+              out.write('\n'.join(lines)+'\n')
+          PY
+      - name: Conserver le manifeste de la base candidate
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffa-d1-candidate-${{ github.run_id }}
+          path: build/d1/candidate.json
+          retention-days: 14
+          if-no-files-found: warn
