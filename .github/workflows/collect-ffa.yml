@@ -1,0 +1,105 @@
+name: Collecte FFA (sans publication)
+
+on:
+  pull_request:
+    paths:
+      - 'tools/collect_ffa.py'
+      - '.github/workflows/collect-ffa.yml'
+  workflow_dispatch:
+    inputs:
+      season:
+        description: 'Saison FFA (vide = saison en cours)'
+        default: ''
+        type: string
+      mode:
+        description: 'Essai limité ou collecte complète'
+        type: choice
+        options: [probe, full]
+        default: probe
+      resume_run:
+        description: 'Reprendre le run interrompu (ID numérique ; moins de 24 h)'
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ffa-collection
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Tests du collecteur
+        run: python3 tests/test_collect_ffa.py
+      - name: Reprendre les pages du run précédent
+        if: github.event_name == 'workflow_dispatch' && inputs.resume_run != ''
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.resume_run }}
+          name: ffa-collection-${{ inputs.resume_run }}
+          path: build/collection
+      - name: Collecter et contrôler les bilans
+        id: collection
+        env:
+          FFA_SEASON: ${{ inputs.season }}
+          FFA_MODE: ${{ inputs.mode || 'probe' }}
+          RESUME_RUN: ${{ inputs.resume_run }}
+        run: |
+          args=(--out build/collection --mode "$FFA_MODE")
+          if [ -n "$FFA_SEASON" ]; then args+=(--season "$FFA_SEASON"); fi
+          if [ -n "$RESUME_RUN" ]; then args+=(--resume); fi
+          python3 tools/collect_ffa.py "${args[@]}"
+      - name: Résumé
+        if: always()
+        env:
+          COLLECTION_OUTCOME: ${{ steps.collection.outcome }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          path = Path('build/collection/report.json')
+          if path.exists():
+              r = json.loads(path.read_text())
+              success = os.environ['COLLECTION_OUTCOME'] == 'success'
+              lines = [f"## Collecte FFA {r['season']} — {r['mode']}", '',
+                       f"Contrôles terminés : {success and r['complete']}. Exports validés : {success and r.get('exports_ready', False)}.",
+                       '', '| Bilan | Pages contrôlées | Lignes contrôlées / total FFA |', '|---|---:|---:|']
+              for d in r['datasets']:
+                  lines.append(f"| {d['distance']} {d['sex']} | {d['pages_checked']}/{d['total_pages']} | {d['rows_checked']}/{d['expected_rows']} |")
+              if r.get('error'):
+                  lines += ['', 'Collecte interrompue : consulter le journal et report.json.']
+              lines += ['', 'Aucune écriture dans D1. Aucune publication dans RP.']
+              with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as out:
+                  out.write('\n'.join(lines) + '\n')
+          PY
+      - name: Conserver le rapport et les pages de reprise
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffa-collection-${{ github.run_id }}
+          path: |
+            build/collection/collection.json
+            build/collection/report.json
+            build/collection/pages/
+          if-no-files-found: warn
+          retention-days: 14
+          overwrite: true
+      - name: Conserver uniquement les exports complets validés
+        if: success() && inputs.mode == 'full'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffa-exports-${{ github.run_id }}
+          path: build/collection/exports/*.json.gz
+          if-no-files-found: error
+          retention-days: 14
+          overwrite: true

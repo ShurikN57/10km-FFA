@@ -38,3 +38,5 @@ jobs:
         run: npm test
       - name: Tests de construction de la base (Python)
         run: python3 tests/test_build_db.py
+      - name: Tests de collecte FFA hors réseau
+        run: python3 tests/test_collect_ffa.py
