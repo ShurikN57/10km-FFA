@@ -114,14 +114,43 @@ async function main() {
     await tablePage.close();
   }
 
-  // 7. Restaurer le dernier classement après rechargement
+  // 7. Collecte « nouvelle » : un effacement bloqué arrête tout, sinon la base
+  //    locale est vide avant de recollecter.
+  const collector = fs.readFileSync(path.join(ROOT, 'tools', 'ffa-collecte-bilans.js'), 'utf8');
+  const colPage = await browser.newPage();
+  await colPage.goto(base + '/index.html');
+  const alerts = [];
+  colPage.on('dialog', (d) => { alerts.push(d.message()); d.dismiss().catch(() => {}); });
+  await colPage.evaluate(() => new Promise((ok) => {
+    const q = indexedDB.open('FFA_BILANS_AUTO_V3_2027', 1);
+    q.onupgradeneeded = () => q.result.createObjectStore('pages', { keyPath: 'key' });
+    q.onsuccess = () => { const db = q.result; const tx = db.transaction('pages', 'readwrite'); tx.objectStore('pages').put({ key: 'ancienne|page' }); tx.oncomplete = () => { window.__blocker = db; ok(); }; };
+  }));
+  const runCollector = async () => {
+    alerts.length = 0;
+    await colPage.evaluate((src) => { window.__FFA_AUTO_MODE = 'nouvelle'; window.__FFA_YEARS = ['2027']; (0, eval)(src); }, collector);
+    await colPage.waitForFunction(() => true);
+    for (let i = 0; i < 50 && !alerts.length; i++) await colPage.waitForTimeout(100);
+    return alerts.join(' | ');
+  };
+  const blockedMsg = await runCollector();
+  assert.match(blockedMsg, /bloqué/, 'effacement bloqué signalé : ' + blockedMsg);
+  assert.doesNotMatch(blockedMsg, /page FFA Bilans/, 'la collecte ne démarre pas');
+  await colPage.evaluate(() => window.__blocker.close());
+  const freeMsg = await runCollector();
+  assert.match(freeMsg, /Ouvre d'abord une page FFA Bilans/, 'effacement réussi, la collecte démarre : ' + freeMsg);
+  const left = await colPage.evaluate(() => new Promise((ok) => { const q = indexedDB.open('FFA_BILANS_AUTO_V3_2027', 1); q.onsuccess = () => { const db = q.result; const r = db.transaction('pages').objectStore('pages').count(); r.onsuccess = () => { ok(r.result); db.close(); }; }; }));
+  assert.equal(left, 0, 'aucune ancienne page conservée');
+  await colPage.close();
+
+  // 8. Restaurer le dernier classement après rechargement
   await page.goto(base + '/mobile.html');
   await page.click('[data-app-tab="analyse"]');
   await page.click('#restoreBtn');
   await page.waitForFunction(() => document.getElementById('sTotal').textContent === '3001');
 
   assert.deepEqual(errors, [], 'aucune erreur JavaScript');
-  console.log('OK — e2e : recherche, classement, filtres, distances, import, import compressé de 3001 coureurs, places GoTiming, restauration (' + api.length + ' appels API simulés)');
+  console.log('OK — e2e : recherche, classement, filtres, distances, import, import compressé de 3001 coureurs, places GoTiming, collecte fraîche, restauration (' + api.length + ' appels API simulés)');
   await browser.close();
   server.close();
 }

@@ -1,6 +1,8 @@
-"""Tests de tools/build_db.py : lecture des exports bruts, fusion, construction."""
+"""Tests de tools/build_db.py : référence, contrôle des exports, fusion, construction."""
 import gzip
+import itertools
 import json
+import random
 import sqlite3
 import sys
 import tempfile
@@ -26,6 +28,29 @@ def empty():
     return {k: [] for k, _, _ in b.DISTANCES}
 
 
+def raw_row(time, name, birth='1990', ffa_id='', club='Club', date='12/10/26'):
+    return [time, name, club, 'I-F', '077', '', date, 'Lieu', birth, ffa_id]
+
+
+def write_exports(directory, seasons=(2027,), rows=None, mutate=None):
+    """Écrit un jeu complet d'exports bruts (4 distances × saisons × H/F)."""
+    paths = []
+    for key, label, _ in b.DISTANCES:
+        event = {v: k for k, v in b.EVENT_DISTANCE.items()}[key]
+        datasets = [{'year': y, 'sex': s, 'rows': (rows or {}).get((key, y, s), [raw_row("40'00''" if key in ('5k', '10k') else '2h30\'00\'\'', f'COUREUR {key} {s}')])}
+                    for y in seasons for s in ('M', 'F')]
+        doc = {'schema_version': 3, 'seasons': list(seasons), 'distance': label, 'event': event, 'datasets': datasets}
+        if mutate:
+            doc = mutate(key, doc)
+            if doc is None:
+                continue
+        path = Path(directory) / f'ffa_{label}_{seasons[0]}.json.gz'
+        with gzip.open(path, 'wt', encoding='utf-8') as f:
+            json.dump(doc, f)
+        paths.append(path)
+    return paths
+
+
 class ParseTests(unittest.TestCase):
     def test_parse_time(self):
         for text, sec in [("33'05''", 1985), ("1h13'26''", 4406), ("2h05'30''", 7530), ('1:13:26', 4406),
@@ -43,19 +68,65 @@ class ParseTests(unittest.TestCase):
         self.assertEqual(b.category(2012, 2027), None)  # minime : pas classé
         self.assertEqual(b.category(None, 2027), None)
 
-    def test_load_raw(self):
-        doc = {'event': '261', 'distance': '10 km', 'datasets': [{'year': 2027, 'sex': 'F', 'rows': [
-            ["35'10''", 'DUPONT Marie', 'Club A', 'I-F', '077', 'SEF / 95', '12/10/26', 'Paris', '1995', '123'],
-            ['???', 'ILLISIBLE Jean', '', '', '', '', '', '', '', '']]}]}
+
+class RawExportValidationTests(unittest.TestCase):
+    def check(self, mutate=None, seasons=(2027,), expect=None, paths_filter=None):
         with tempfile.TemporaryDirectory() as d:
-            path = Path(d) / 'ffa_10km_2027.json.gz'
-            with gzip.open(path, 'wt', encoding='utf-8') as f:
-                json.dump(doc, f)
-            perfs, report = b.load_raw([path])
-        self.assertEqual(report['unreadable'], 1)
-        p = perfs['10k'][0]
-        self.assertEqual((p['pb_sec'], p['sex'], p['birth_year'], p['athlete_ffa_id'], p['league'], p['pb_date']),
-                         (2110, 'F', 1995, '123', 'I-F', '12/10/26'))
+            paths = write_exports(d, seasons=seasons, mutate=mutate)
+            if paths_filter:
+                paths = paths_filter(paths)
+            if expect is None:
+                perfs, report = b.load_raw(paths, [2027])
+                return perfs, report
+            with self.assertRaises(b.InputError) as ctx:
+                b.load_raw(paths, [2027])
+            self.assertIn(expect, str(ctx.exception))
+
+    def test_jeu_complet_accepte(self):
+        perfs, report = self.check()
+        self.assertEqual({k: len(v) for k, v in perfs.items()}, {'5k': 2, '10k': 2, 'semi': 2, 'marathon': 2})
+        self.assertEqual(report['unreadable'], 0)
+
+    def test_fichier_sans_aucun_bilan_refuse(self):
+        self.check(lambda k, d: {**d, 'datasets': []} if k == 'semi' else d, expect='manquants')
+
+    def test_version_de_schema_incorrecte_refusee(self):
+        self.check(lambda k, d: {**d, 'schema_version': 2} if k == '10k' else d, expect='version de schéma')
+
+    def test_bilan_femmes_manquant_refuse(self):
+        self.check(lambda k, d: {**d, 'datasets': [x for x in d['datasets'] if x['sex'] == 'M']} if k == '5k' else d,
+                   expect="(2027, 'F')")
+
+    def test_bilan_vide_refuse(self):
+        def m(k, d):
+            if k == 'marathon':
+                d['datasets'][0]['rows'] = []
+            return d
+        self.check(m, expect='vide')
+
+    def test_distance_manquante_refusee(self):
+        self.check(lambda k, d: None if k == 'marathon' else d, expect='export manquant pour la distance marathon')
+
+    def test_distance_en_double_refusee(self):
+        self.check(paths_filter=lambda p: p + [p[0]], expect='deuxième export')
+
+    def test_mauvaise_saison_refusee(self):
+        self.check(seasons=(2026,), expect='saisons')
+
+    def test_bilan_en_trop_refuse(self):
+        def m(k, d):
+            if k == '10k':
+                d['datasets'].append({'year': 2026, 'sex': 'M', 'rows': [raw_row("40'00''", 'X')]})
+            return d
+        self.check(m, expect='en trop')
+
+    def test_temps_impossibles_ecartes_sur_toutes_les_distances(self):
+        rows = {('5k', 2027, 'M'): [raw_row("10'53''", 'A')], ('10k', 2027, 'M'): [raw_row("22'00''", 'B')],
+                ('semi', 2027, 'M'): [raw_row("50'00''", 'C')], ('marathon', 2027, 'M'): [raw_row("1h50'00''", 'D')]}
+        with tempfile.TemporaryDirectory() as d:
+            perfs, report = b.load_raw(write_exports(d, rows=rows), [2027])
+        self.assertEqual(report['too_fast'], 4)
+        self.assertEqual({k: len(v) for k, v in perfs.items()}, {'5k': 1, '10k': 1, 'semi': 1, 'marathon': 1})
 
 
 class MergeTests(unittest.TestCase):
@@ -79,8 +150,8 @@ class MergeTests(unittest.TestCase):
         self.assertEqual(stats['unchanged'], 1)
 
     def test_homonymes_avec_identifiants_differents_restent_separes(self):
-        out, stats = self.merge([profile('MOREAU Alexandre', 3775, ffa_id='A'), profile('MOREAU Alexandre', 2577, ffa_id='B')],
-                                [perf('MOREAU Alexandre', 3000, ffa_id='A')])
+        out, _ = self.merge([profile('MOREAU Alexandre', 3775, ffa_id='A'), profile('MOREAU Alexandre', 2577, ffa_id='B')],
+                            [perf('MOREAU Alexandre', 3000, ffa_id='A')])
         self.assertEqual(sorted(p['pb_sec'] for p in out), [2577, 3000])
 
     def test_sans_identifiant_par_nom_annee_sexe(self):
@@ -95,26 +166,75 @@ class MergeTests(unittest.TestCase):
         self.assertEqual((out[0]['athlete_ffa_id'], out[0]['pb_sec']), ('9', 2500))
         self.assertEqual(stats['linked_id'], 1)
 
+    def test_deux_nouveaux_identifiants_ne_sont_pas_relies_au_meme_profil(self):
+        out, stats = self.merge([profile('PETIT Luc', 2500)], [perf('PETIT Luc', 2600, ffa_id='9'), perf('PETIT Luc', 2700, ffa_id='10')])
+        self.assertEqual(stats['linked_id'], 0)
+        self.assertEqual(sorted((p['athlete_ffa_id'] or '-', p['pb_sec']) for p in out), [('-', 2500), ('10', 2700), ('9', 2600)])
+
     def test_resultat_sans_identifiant_rattache_au_profil_identifie_unique(self):
-        out, stats = self.merge([profile('BITTEROLF Thomas', 7000, ffa_id='3611328')], [perf('BITTEROLF Thomas', 6900)])
+        out, _ = self.merge([profile('BITTEROLF Thomas', 7000, ffa_id='3611328')], [perf('BITTEROLF Thomas', 6900)])
         self.assertEqual(len(out), 1)
         self.assertEqual((out[0]['pb_sec'], out[0]['athlete_ffa_id']), (6900, '3611328'))
 
-    def test_resultat_sans_identifiant_ambigu_cree_un_profil(self):
-        ref = [profile('MOREAU Alexandre', 3775, ffa_id='A'), profile('MOREAU Alexandre', 2577, ffa_id='B')]
-        out, stats = self.merge(ref, [perf('MOREAU Alexandre', 3000)])
-        self.assertEqual(len(out), 3)
-        self.assertEqual(sorted(p['pb_sec'] for p in out[:2]), [2577, 3775])
+    def test_resultat_sans_identifiant_rattache_a_un_nouvel_identifiant_unique(self):
+        out, stats = self.merge([], [perf('NOUVEAU Coureur', 2900, ffa_id='5'), perf('NOUVEAU Coureur', 2800)])
+        self.assertEqual([(p['athlete_ffa_id'], p['pb_sec']) for p in out], [('5', 2800)])
+        self.assertEqual(stats['new'], 1)
 
     def test_resultat_sans_identifiant_prefere_le_profil_sans_identifiant(self):
         ref = [profile('ADAM Frederic', 14726), profile('ADAM Frederic', 14332, ffa_id='2026257')]
         out, _ = self.merge(ref, [perf('ADAM Frederic', 14000)])
         self.assertEqual([(p['athlete_ffa_id'], p['pb_sec']) for p in out], [(None, 14000), ('2026257', 14332)])
 
-    def test_nouvel_athlete(self):
-        out, stats = self.merge([profile('DUPONT Jean', 2000, ffa_id='1')], [perf('NOUVEAU Coureur', 2900, ffa_id='2')])
-        self.assertEqual(len(out), 2)
-        self.assertEqual(stats['new'], 1)
+    def test_cas_ambigu_independant_de_l_ordre(self):
+        """Cas signalé : deux homonymes identifiés et un résultat sans identifiant.
+        Quel que soit l'ordre, le résultat sans identifiant est écarté et signalé."""
+        ref = [profile('MOREAU Alexandre', 3775, ffa_id='A'), profile('MOREAU Alexandre', 2577, ffa_id='B')]
+        incoming = [perf('MOREAU Alexandre', 2500), perf('MOREAU Alexandre', 3700, ffa_id='A'), perf('AUTRE Coureur', 3000)]
+        results = set()
+        for order in itertools.permutations(incoming):
+            out, stats = self.merge(ref, list(order))
+            self.assertEqual(stats['ambiguous'], 1)
+            results.add(json.dumps(out, sort_keys=True))
+        self.assertEqual(len(results), 1)
+        out = json.loads(results.pop())
+        self.assertEqual(sorted((p['athlete_ffa_id'] or '-', p['pb_sec']) for p in out), [('-', 3000), ('A', 3700), ('B', 2577)])
+
+    def test_cas_ambigu_avec_un_nouvel_identifiant(self):
+        # Un homonyme identifié dans la référence + un nouvel identifiant entrant :
+        # le résultat sans identifiant peut appartenir à l'un ou l'autre.
+        incoming = [perf('LEROY Paul', 2500), perf('LEROY Paul', 2600, ffa_id='N')]
+        for order in itertools.permutations(incoming):
+            out, stats = self.merge([profile('LEROY Paul', 2700, ffa_id='R')], list(order))
+            self.assertEqual(stats['ambiguous'], 1)
+            self.assertEqual(sorted((p['athlete_ffa_id'], p['pb_sec']) for p in out), [('N', 2600), ('R', 2700)])
+
+    def test_fusion_independante_de_l_ordre_sur_donnees_aleatoires(self):
+        rng = random.Random(7)
+        names = ['MARTIN Paul', 'DURAND Lea', 'MOREAU Alexandre', 'PETIT Luc', 'ADAM Chloe']
+        ref = []
+        for i in range(60):
+            ref.append(profile(rng.choice(names), 2000 + rng.randrange(50) * 10, birth=1980 + rng.randrange(3),
+                               sex=rng.choice('MF'), ffa_id=str(rng.randrange(40)) if rng.random() < 0.6 else None))
+        # Unicité des identifiants dans la référence, comme en production.
+        seen, unique = set(), []
+        for p in ref:
+            if p['athlete_ffa_id'] and p['athlete_ffa_id'] in seen:
+                continue
+            seen.add(p['athlete_ffa_id'])
+            unique.append(p)
+        ref = unique
+        incoming = [perf(rng.choice(names), 1950 + rng.randrange(60) * 10, birth=1980 + rng.randrange(3), sex=rng.choice('MF'),
+                         ffa_id=str(rng.randrange(60)) if rng.random() < 0.5 else None,
+                         date=f'{1 + rng.randrange(28):02d}/{1 + rng.randrange(12):02d}/26', club=rng.choice(['A', 'B', 'C']))
+                    for _ in range(120)]
+        reference_out, reference_stats = self.merge(ref, incoming)
+        for _ in range(30):
+            shuffled = incoming[:]
+            rng.shuffle(shuffled)
+            out, stats = self.merge(ref, shuffled)
+            self.assertEqual(out, reference_out)
+            self.assertEqual(stats, reference_stats)
 
     def test_fusion_idempotente(self):
         ref = [profile('DUPONT Jean', 2100, ffa_id='1')]
@@ -124,21 +244,58 @@ class MergeTests(unittest.TestCase):
         self.assertEqual(once, twice)
 
 
-class MinimumTimeTests(unittest.TestCase):
-    def test_temps_impossible_ecarte_avant_fusion(self):
-        doc = {'event': '252', 'distance': '5 km', 'datasets': [{'year': 2027, 'sex': 'M', 'rows': [
-            ["10'53''", 'RAPIDE Jean', 'Club', '', '', '', '01/10/26', '', '1990', '7'],
-            ["16'00''", 'RAPIDE Jean', 'Club', '', '', '', '02/10/26', '', '1990', '7']]}]}
+class ReferenceTests(unittest.TestCase):
+    def test_ecriture_relecture_et_prolongation(self):
+        prof = empty()
+        prof['10k'] = [profile('DUPONT Jean', 2100, ffa_id='1', league='I-F', dept='077')]
         with tempfile.TemporaryDirectory() as d:
-            path = Path(d) / 'ffa_5km_2027.json.gz'
-            with gzip.open(path, 'wt', encoding='utf-8') as f:
+            b.write_reference(prof, [2024, 2025, 2026], d, 'test')
+            loaded, seasons = b.load_reference(d)
+            self.assertEqual((seasons, loaded['10k']), ([2024, 2025, 2026], prof['10k']))
+            # Prolongation : les anciens fichiers sont remplacés.
+            b.write_reference(loaded, [2024, 2025, 2026, 2027], d, 'test')
+            self.assertEqual(sorted(p.name for p in Path(d).iterdir())[0], 'ffa_10km_2024_2027.json.gz')
+            self.assertEqual(len(list(Path(d).iterdir())), 4)
+            self.assertEqual(b.load_reference(d)[1], [2024, 2025, 2026, 2027])
+
+    def test_saisons_incoherentes_refusees(self):
+        with tempfile.TemporaryDirectory() as d:
+            b.write_reference(empty(), [2024, 2025, 2026], d, 'test')
+            path = Path(d) / 'ffa_semi_2024_2026.json.gz'
+            doc = json.load(gzip.open(path, 'rt'))
+            doc['seasons'] = [2024, 2025]
+            with gzip.open(path, 'wt') as f:
                 json.dump(doc, f)
-            perfs, report = b.load_raw([path])
-        self.assertEqual(report['too_fast'], 1)
-        ref = empty()
-        ref['5k'] = [profile('RAPIDE Jean', 970, ffa_id='7')]
-        out, _ = b.merge(ref, perfs)
-        self.assertEqual([p['pb_sec'] for p in out['5k']], [960])
+            with self.assertRaises(b.InputError):
+                b.load_reference(d)
+
+    def test_reference_du_depot(self):
+        _, seasons = b.load_reference()
+        self.assertEqual(seasons, [2024, 2025, 2026])
+
+    def test_saison_deja_dans_la_reference_refusee(self):
+        with tempfile.TemporaryDirectory() as d:
+            ref = Path(d) / 'ref'
+            b.write_reference(empty(), [2024, 2025, 2026], ref, 'test')
+            exports = write_exports(d, seasons=(2026,))
+            code = b.main(['--out', str(Path(d) / 'x.db'), '--reference', str(ref), '--season', '2026', '--raw', *map(str, exports)])
+            self.assertEqual(code, 2)
+            self.assertFalse((Path(d) / 'x.db').exists())
+
+    def test_chaine_complete_avec_prolongation(self):
+        with tempfile.TemporaryDirectory() as d:
+            ref = Path(d) / 'ref'
+            prof = empty()
+            prof['10k'] = [profile('COUREUR 10k M', 2500, birth=1990)]
+            b.write_reference(prof, [2024, 2025, 2026], ref, 'test')
+            exports = write_exports(d)
+            code = b.main(['--out', str(Path(d) / 'x.db'), '--reference', str(ref), '--season', '2027',
+                           '--raw', *map(str, exports), '--write-reference', str(ref)])
+            self.assertEqual(code, 0)
+            loaded, seasons = b.load_reference(ref)
+            self.assertEqual(seasons, [2024, 2025, 2026, 2027])
+            self.assertEqual([p['pb_sec'] for p in loaded['10k'] if p['sex'] == 'M'], [2400])  # 40'00'' < 2500 s
+            self.assertEqual(len(loaded['marathon']), 2)
 
 
 class BuildTests(unittest.TestCase):
