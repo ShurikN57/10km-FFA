@@ -55,6 +55,16 @@ Le workflow **Collecte FFA (sans publication)** remplace l'étape navigateur pou
 la collecte uniquement. Il n'a aucun secret Cloudflare, ne crée pas de D1 et ne
 déploie rien. Le collecteur navigateur existant reste disponible en secours.
 
+Il peut aussi être déclenché en modifiant `data/collection-request.json` sur
+`main` (via une PR). Ce fichier porte la saison, le mode et une nouvelle date
+`requested_at` pour chaque demande. C'est la voie utilisable par un assistant
+disposant du connecteur GitHub, sans connexion dans un navigateur. Ajouter
+`"resume_run": "123456"` permet de reprendre un run interrompu de moins de 24 h ;
+retirer ce champ pour toute nouvelle actualisation. Le workflow valide les
+valeurs avant toute reprise ou requête réseau. Une PR déclenche seulement un
+essai limité ; sa fusion déclenche la demande effective. Aucun horaire mensuel
+ni accès D1 n'est ajouté par ce mécanisme.
+
 Dans **GitHub → Actions → Collecte FFA (sans publication) → Run workflow** :
 
 1. Laisser la saison vide (saison FFA courante, heure de Paris) ou saisir `2027`.
