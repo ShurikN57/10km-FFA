@@ -34,6 +34,8 @@ Application : <https://shurikn57.github.io/10km-FFA/>
 │   ├── ffa-collecte-bilans.js            Collecte des bilans sur athle.fr (saison en cours par défaut)
 │   ├── build_db.py                       Construit la base complète (référence + nouvelle saison)
 │   ├── validate_db.py                    Contrôles en lecture seule et préparation de l'import
+│   ├── import_d1_candidate.py            Création/import/contrôle d'une D1 distincte
+│   ├── check_ffa_release.py              Cohérence de publication et contrôles de l'API
 │   ├── import_comparateur_user.js        Userscript : envoie un classement GoTiming/UTMB/ACN à l'app
 │   └── Installer_Raccourci_iPhone_v7.html  Le même import en raccourci iPhone
 │

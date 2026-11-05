@@ -166,6 +166,23 @@ sur le binding `DB` dans `api/wrangler.toml` et `CACHE_VERSION` dans `api/worker
 avec validation de l'utilisateur, tests de l'API puis possibilité de retour à
 l'ancien nom/identifiant. Aucun secret n'est publié dans le manifeste.
 
+### Bascule et retour arrière
+
+Une publication regroupe le binding D1, une nouvelle `CACHE_VERSION` et
+`data/current-release.json` (source validée, cible, totaux attendus et ancienne
+base). La CI vérifie leur cohérence avant tout déploiement. Après validation de
+l'utilisateur et fusion de la PR, le workflow du Worker déploie puis vérifie
+`/health`, les quatre classements et une recherche sur l'API publique.
+
+Un échec du contrôle après déploiement doit être traité : il ne déclenche pas de
+bascule inverse automatique. Pour revenir en arrière, restaurer le nom et
+l'identifiant de l'ancienne D1, reprendre ses totaux dans `current-release.json`
+et **augmenter encore** `CACHE_VERSION` (ne pas réutiliser une version de cache).
+L'ancienne base n'a été ni modifiée ni supprimée. Les contrôles de déploiement
+s'appliquent aussi à ce retour arrière. Les caches HTTP déjà présents dans un
+navigateur peuvent subsister jusqu'à cinq minutes ; le contrôle automatisé utilise
+un client neuf, sans ce cache navigateur.
+
 ## Fin de saison : prolonger la référence
 
 Après la dernière collecte complète de la saison 2027 (en septembre 2027) :

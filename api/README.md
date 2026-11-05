@@ -93,6 +93,6 @@ Les migrations de ce dépôt n'ajoutent que des index (`CREATE INDEX IF NOT EXIS
 
 ## Déploiement
 
-Automatique via `.github/workflows/deploy-cloudflare-worker.yml` (tests puis `wrangler deploy`) à chaque modification de `worker.js` ou `wrangler.toml` sur `main`. Secrets GitHub requis : `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`.
+Automatique via `.github/workflows/deploy-cloudflare-worker.yml` à chaque modification de `worker.js` ou `wrangler.toml` sur `main` : tests, cohérence du binding et de `data/current-release.json`, `wrangler deploy`, puis contrôle de l'API publique (total, quatre classements et recherche). Secrets GitHub requis : `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`.
 
 Mise à jour des bilans : voir [`data/README.md`](../data/README.md). La base complète (toutes les tables ci-dessus) est construite par `tools/build_db.py`, puis importée dans une **nouvelle** base D1 ; on bascule ensuite `database_id` dans `wrangler.toml`.

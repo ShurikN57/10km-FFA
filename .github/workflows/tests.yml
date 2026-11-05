@@ -46,3 +46,7 @@ jobs:
         run: python3 tests/test_validate_db.py
       - name: Protections de l'import D1 hors production
         run: python3 tests/test_import_d1_candidate.py
+      - name: Contrôles de publication FFA
+        run: |
+          python3 tests/test_ffa_release.py
+          python3 tools/check_ffa_release.py --config-only

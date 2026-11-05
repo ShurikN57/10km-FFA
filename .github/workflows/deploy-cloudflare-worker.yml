@@ -23,10 +23,17 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - name: Validate Worker syntax
         run: node --check api/worker.js
       - name: Run tests
         run: npm test
+      - name: Vérifier le binding et la version des données
+        run: python3 tools/check_ffa_release.py --config-only
       - name: Deploy Worker
         working-directory: api
         run: npx --yes wrangler@4.157.0 deploy
+      - name: Vérifier la publication sur l'API publique
+        run: python3 tools/check_ffa_release.py
