@@ -82,6 +82,22 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertTrue(out.exists())
 
+    def test_generated_sql_and_multiline_literals(self):
+        path = Path(self.tmp.name) / 'export.sql'
+        with sqlite3.connect(self.database) as db:
+            b.export_sql(db, path)
+        report = v.validate(self.database, self.baseline, sql_path=path)
+        self.assertTrue(report['ok'])
+        self.assertGreater(report['sql']['statements'], 0)
+        path.write_text("INSERT INTO x VALUES ('texte;\nété');\n", encoding='utf-8')
+        self.assertTrue(v.validate(self.database, self.baseline, sql_path=path)['ok'])
+
+    def test_oversized_utf8_sql_and_unterminated_statement_rejected(self):
+        path = Path(self.tmp.name) / 'export.sql'
+        for sql in ["INSERT INTO x VALUES ('" + 'é' * 50_000 + "');\n", 'INSERT INTO x VALUES (1)']:
+            path.write_text(sql, encoding='utf-8')
+            self.assertFalse(v.validate(self.database, self.baseline, sql_path=path)['ok'])
+
 
 if __name__ == '__main__':
     unittest.main()

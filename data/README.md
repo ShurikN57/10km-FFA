@@ -114,7 +114,8 @@ les exports du collecteur de ce dépôt, construit une base de référence et un
 base actualisée, puis contrôle l'intégrité SQLite, les index, la recherche FTS,
 les tables dérivées, les filtres, la conservation de tous les profils historiques
 et un échantillon de rangs calculés par comptage indépendant (tête, milieu et fin
-de chaque distance, sexes, catégories et années).
+de chaque distance, sexes, catégories et années). Le SQL est aussi contrôlé en
+octets UTF-8 contre la limite D1 par instruction, sans l'exécuter dans Cloudflare.
 
 Les rapports et journaux sont dans `ffa-validation-<run>`. La base SQLite et son
 SQL d'import ne sont fournis dans `ffa-base-validee-<run>` **que si tous les

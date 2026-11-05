@@ -13,12 +13,16 @@ import time
 
 from build_db import CATEGORY_AGES, DISTANCES, FRENCH_SQL, category
 
+# Limite par instruction, documentée par Cloudflare (vérifiée le 05/11/2026) :
+# https://developers.cloudflare.com/d1/platform/limits/
+D1_SQL_STATEMENT_LIMIT = 100_000
+
 
 def open_readonly(path):
     return sqlite3.connect(Path(path).resolve().as_uri() + '?mode=ro', uri=True)
 
 
-def validate(database, baseline, season_before=2026, season_after=2027):
+def validate(database, baseline, season_before=2026, season_after=2027, sql_path=None):
     started = time.monotonic()
     report = {'created_at': datetime.now(timezone.utc).isoformat(), 'checks': [],
               'database_bytes': Path(database).stat().st_size,
@@ -115,6 +119,22 @@ def validate(database, baseline, season_before=2026, season_after=2027):
                     rank = db.execute(f'SELECT rank_category FROM {table} WHERE athlete_id=?', (a['id'],)).fetchone()
                     check(prefix + 'categorie_' + suffix, rank[0] if rank else None, expected)
                     check(prefix + 'sexe_categorie_' + suffix, derived['rank_cat_' + suffix], expected_sex)
+    if sql_path is not None:
+        pending = ''
+        longest, statements = 0, 0
+        with open(sql_path, encoding='utf-8') as stream:
+            for line in stream:
+                pending += line
+                longest = max(longest, len(pending.encode('utf-8')))
+                if longest > D1_SQL_STATEMENT_LIMIT:
+                    break
+                if sqlite3.complete_statement(pending):
+                    statements += 1
+                    pending = ''
+        check('sql_taille_instructions_d1', longest <= D1_SQL_STATEMENT_LIMIT, True)
+        check('sql_instructions_terminees', not pending.strip(), True)
+        report['sql'] = {'bytes': Path(sql_path).stat().st_size, 'statements': statements,
+                         'largest_statement_bytes': longest, 'statement_limit_bytes': D1_SQL_STATEMENT_LIMIT}
     report['ok'] = all(c['ok'] for c in report['checks'])
     report['duration_seconds'] = round(time.monotonic() - started, 2)
     return report
@@ -125,11 +145,12 @@ def main(argv=None):
     parser.add_argument('--db', required=True)
     parser.add_argument('--baseline', required=True)
     parser.add_argument('--out', required=True)
+    parser.add_argument('--sql', help='contrôle aussi la taille des instructions SQL pour D1')
     parser.add_argument('--season-before', type=int, default=2026)
     parser.add_argument('--season-after', type=int, default=2027)
     args = parser.parse_args(argv)
     try:
-        report = validate(args.db, args.baseline, args.season_before, args.season_after)
+        report = validate(args.db, args.baseline, args.season_before, args.season_after, args.sql)
     except (OSError, sqlite3.Error) as error:
         report = {'ok': False, 'error': str(error)}
     out = Path(args.out)

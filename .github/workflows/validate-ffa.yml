@@ -105,7 +105,7 @@ jobs:
           python3 tools/build_db.py --out build/reconstruction/ffa.db --sql build/reconstruction/ffa.sql --fingerprints --season "$FFA_SEASON" --raw build/raw/*.json.gz | tee build/reconstruction/build.log
       - name: Contrôler l’historique, les tables et les rangs
         if: steps.source.outputs.ready == 'true'
-        run: python3 tools/validate_db.py --db build/reconstruction/ffa.db --baseline build/baseline.db --out build/reconstruction/validation.json
+        run: python3 tools/validate_db.py --db build/reconstruction/ffa.db --baseline build/baseline.db --sql build/reconstruction/ffa.sql --out build/reconstruction/validation.json
       - name: Résumé de validation
         if: always() && steps.source.outputs.ready == 'true'
         run: |
