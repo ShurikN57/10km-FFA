@@ -4,3 +4,5 @@ build/
 # Exports bruts de la collecte (gardés en local, voir data/README.md)
 data/exports/
 .DS_Store
+__pycache__/
+*.pyc
