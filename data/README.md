@@ -154,3 +154,10 @@ python3 tools/build_db.py --out build/ffa.db --season 2027 --raw data/exports/20
 
 La référence devient `ffa_<distance>_2024_2027.json.gz` : les fichiers 2024–2026 sont remplacés, et la saison 2027 n'est plus acceptée en `--raw`. Les mises à jour suivantes ne collectent plus que 2028. En même temps :
 - les rangs par catégorie passent aux saisons 2027 et 2028 : `--season-before 2027 --season-after 2028`, et `RANK_CAT_AFTER_SEASON` (`api/worker.js`) / `FFA_LATEST_RANKED_SEASON` (`core.js`) passent à 2028.
+
+Pour la chaîne automatique, adapter d'abord `RANK_SEASON_BEFORE` et
+`RANK_SEASON_AFTER` dans `tools/build_db.py` à 2027/2028 : le workflow et le
+validateur réutilisent ces valeurs. Une collecte plus récente que les catégories
+préparées est refusée avant construction. Les constantes du Worker et de l'app
+ne changent qu'au moment de la bascule vers la nouvelle base validée (avec
+`CACHE_VERSION` et, pour `core.js`, `SHELL_CACHE`).

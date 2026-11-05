@@ -28,14 +28,17 @@ Application : <https://shurikn57.github.io/10km-FFA/>
 │   └── migrations/        Modifications de la base (index), dans l'ordre
 │
 ├── data/reference/        Référence figée : meilleur temps 2024–2026 par athlète et distance (voir data/README.md)
-├── tools/                 Scripts navigateur de collecte et d'import
+├── tools/                 Collecte, construction, contrôle et import
+│   ├── collect_ffa.py                    Collecte HTTP sans navigateur (essai ou saison complète)
+│   ├── ffa_request.py                    Validation des demandes de collecte GitHub
 │   ├── ffa-collecte-bilans.js            Collecte des bilans sur athle.fr (saison en cours par défaut)
 │   ├── build_db.py                       Construit la base complète (référence + nouvelle saison)
+│   ├── validate_db.py                    Contrôles en lecture seule et préparation de l'import
 │   ├── import_comparateur_user.js        Userscript : envoie un classement GoTiming/UTMB/ACN à l'app
 │   └── Installer_Raccourci_iPhone_v7.html  Le même import en raccourci iPhone
 │
 ├── tests/                 Tests unitaires, d'intégration SQL et de bout en bout
-└── .github/workflows/     CI (tests) et déploiement du Worker
+└── .github/workflows/     Tests, collecte, reconstruction hors production et déploiement du Worker
 ```
 
 L'app reste à la racine : GitHub Pages la sert depuis `main`, et l'adresse de la PWA installée ne doit pas changer.
@@ -73,6 +76,7 @@ puis ouvrir <http://localhost:8000/mobile.html>.
 
 ## Maintenance
 
+- **Actualiser les performances** : lancer la collecte complète dans GitHub Actions ou modifier `data/collection-request.json` via une PR. La reconstruction et les contrôles suivent automatiquement. Cette chaîne prépare les fichiers et ne publie rien dans D1. Voir la [procédure de mise à jour](data/README.md).
 - **Après un réimport des bilans** : incrémenter `CACHE_VERSION` dans `api/worker.js` pour vider le cache de l'API.
 - **Chaque saison** : les catégories suivent la saison FFA (bascule le 1er septembre), mais pas au-delà de la dernière saison dont les rangs par catégorie sont précalculés dans D1 (2027). Après recalcul de ces rangs, augmenter `RANK_CAT_AFTER_SEASON` (`api/worker.js`) et `FFA_LATEST_RANKED_SEASON` (`core.js`).
 
