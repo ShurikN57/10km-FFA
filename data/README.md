@@ -49,6 +49,55 @@ Les temps impossibles sont écartés **avant** la fusion, sur toutes les distanc
 
 ## Mettre à jour les bilans
 
+### Collecte sans navigateur (essai GitHub Actions)
+
+Le workflow **Collecte FFA (sans publication)** remplace l'étape navigateur pour
+la collecte uniquement. Il n'a aucun secret Cloudflare, ne crée pas de D1 et ne
+déploie rien. Le collecteur navigateur existant reste disponible en secours.
+
+Dans **GitHub → Actions → Collecte FFA (sans publication) → Run workflow** :
+
+1. Laisser la saison vide (saison FFA courante, heure de Paris) ou saisir `2027`.
+2. Choisir `probe` pour le premier essai : première, deuxième et dernière page de
+   chacun des huit bilans. Ce mode ne produit **aucun export utilisable pour une
+   mise à jour**. Un essai est également lancé lors d'une PR sur le collecteur.
+3. Après validation de cet essai, choisir `full` : toute la saison est collectée,
+   puis les quatre fichiers V3 sont générés.
+4. Lire le résumé du run. L'artefact `ffa-collection-<run>` contient le rapport
+   et les pages de reprise. En mode complet réussi uniquement, l'artefact distinct
+   `ffa-exports-<run>` contient les quatre exports à passer à `build_db.py`.
+
+Les requêtes sont séquentielles, espacées d'au moins une seconde, avec quatre
+tentatives maximum en cas d'erreur réseau. Une page non reconnue, une pagination
+ignorée, des pages identiques ou un total de lignes différent du total FFA font
+échouer la collecte. La première page est relue à la fin de chaque bilan pour
+détecter un changement en cours de lecture. Cela ne constitue pas un instantané
+transactionnel du site FFA : le contrôle des données avant publication reste requis.
+
+**Interruption :** les pages terminées sont conservées dans l'artefact, y compris
+si le run échoue normalement. Relancer le workflow avec la même saison, le même
+mode et l'ID du run interrompu dans `resume_run`, sous 24 heures. Les premières
+pages sont revérifiées ; si elles ou les totaux ont changé, une nouvelle collecte
+est requise (champ `resume_run` vide). Un arrêt forcé du runner peut empêcher
+l'envoi de l'artefact : recommencer dans ce cas. Une actualisation mensuelle doit
+toujours être une **nouvelle** collecte, jamais une reprise du mois précédent.
+
+Les artefacts sont conservés 14 jours. Il faut les télécharger pour une conservation
+plus longue. Ils ne sont pas ajoutés au dépôt Git. La collecte complète, sa durée
+depuis GitHub et les éventuels blocages athle.fr doivent être validés avant d'activer
+un horaire mensuel. Aucun horaire ni publication automatique n'est activé à ce stade.
+
+Exécution locale, Python 3.9+ sans dépendance supplémentaire :
+
+```bash
+python3 tools/collect_ffa.py --season 2027 --mode probe --out build/essai-2027
+python3 tools/collect_ffa.py --season 2027 --mode full --out build/collecte-2027
+# Seulement pour reprendre la même campagne interrompue depuis moins de 24 h :
+python3 tools/collect_ffa.py --season 2027 --mode full --out build/collecte-2027 --resume
+```
+
+### Construction et publication après collecte
+
 1. **Collecte** (ordinateur, sur athle.fr) : ouvrir une page « Bilans », fermer les autres onglets athle.fr, lancer `tools/ffa-collecte-bilans.js` en mode `nouvelle`. Le script efface la collecte précédente de la saison et **vérifie que la base locale est vide** ; si l'effacement est bloqué, il s'arrête sans rien collecter. Il recollecte ensuite les 8 bilans de la saison en cours. Lancer enfin le mode `export` : 4 fichiers `ffa_<distance>_2027.json.gz`, qui portent les dates de collecte (`collected_from` / `collected_to`).
 2. **Construction hors production** : placer les 4 fichiers dans `data/exports/2027/` (non versionné), puis :
    ```bash
