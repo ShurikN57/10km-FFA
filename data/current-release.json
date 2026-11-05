@@ -1,0 +1,30 @@
+{
+  "season": 2027,
+  "prepared_at": "2026-11-05T19:40:03.020358+00:00",
+  "database_id": "dba36189-b3f8-4ab4-a501-9a39c17e15aa",
+  "database_name": "ffa-stage-2027-42091141044-1",
+  "cache_version": 2,
+  "profiles": 1584536,
+  "distances": {
+    "5k": 147298,
+    "10k": 585369,
+    "semi": 540864,
+    "marathon": 311005
+  },
+  "collection_run": 41988760105,
+  "validation_run": 41997538875,
+  "d1_preparation_run": 42091141044,
+  "sql_sha256": "47593663ae4bd035bdd2f69d8f7b57feaef68cb017c7bcd459c0c1b9309b8621",
+  "previous": {
+    "database_id": "110af62a-034e-471d-ae99-53971c754f7b",
+    "database_name": "ffa-comparateur",
+    "cache_version": 1,
+    "profiles": 1437065,
+    "distances": {
+      "5k": 124626,
+      "10k": 533085,
+      "semi": 490879,
+      "marathon": 288475
+    }
+  }
+}

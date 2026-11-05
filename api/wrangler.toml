@@ -7,8 +7,8 @@ preview_urls = false
 
 [[d1_databases]]
 binding = "DB"
-database_name = "ffa-comparateur"
-database_id = "110af62a-034e-471d-ae99-53971c754f7b"
+database_name = "ffa-stage-2027-42091141044-1"
+database_id = "dba36189-b3f8-4ab4-a501-9a39c17e15aa"
 
 # Limitation de débit par IP (Workers Rate Limiting). Large volontairement :
 # les opérateurs mobiles partagent souvent une même IP entre beaucoup d'abonnés.

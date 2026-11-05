@@ -113,7 +113,7 @@ const LARGE_CATEGORY_SHARE = 0.04;
 // Cache des réponses en lecture. Les données ne changent qu'à chaque réimport
 // des bilans : une même page n'a pas besoin de relire la base à chaque fois.
 // Incrémenter CACHE_VERSION après un réimport pour invalider tout le cache.
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2;
 const CACHEABLE_PATHS = new Set(['/search', '/ranking', '/ranking-options']);
 const EDGE_TTL_SECONDS = 3600;   // cache Cloudflare
 const BROWSER_TTL_SECONDS = 300; // cache du navigateur
