@@ -108,6 +108,33 @@ python3 tools/collect_ffa.py --season 2027 --mode full --out build/collecte-2027
 
 ### Construction et publication après collecte
 
+Après une collecte complète réussie sur `main`, le workflow **Reconstruire et
+valider FFA (hors production)** se lance automatiquement. Il télécharge seulement
+les exports du collecteur de ce dépôt, construit une base de référence et une
+base actualisée, puis contrôle l'intégrité SQLite, les index, la recherche FTS,
+les tables dérivées, les filtres, la conservation de tous les profils historiques
+et un échantillon de rangs calculés par comptage indépendant (tête, milieu et fin
+de chaque distance, sexes, catégories et années). Le SQL est aussi contrôlé en
+octets UTF-8 contre la limite D1 par instruction, sans l'exécuter dans Cloudflare.
+
+Les rapports et journaux sont dans `ffa-validation-<run>`. La base SQLite et son
+SQL d'import ne sont fournis dans `ffa-base-validee-<run>` **que si tous les
+contrôles passent**. Les deux sont conservés 14 jours. `provenance.json` contient
+les commits de collecte/construction et les SHA-256 des quatre exports. Il est
+également possible de relancer la validation avec le bouton du workflow et l'ID
+d'un run de collecte complète réussi sur `main`.
+
+Cette validation compare avec la référence figée du dépôt, pas avec une lecture
+directe de D1. Elle ne remplace pas un essai d'import dans une nouvelle D1 ni les
+mesures de l'API Cloudflare avant bascule. Les saisons de catégories restent
+2026/2027 ; leur passage à 2027/2028 exige toujours l'adaptation décrite plus bas.
+
+En local, après les deux constructions :
+
+```bash
+python3 tools/validate_db.py --db build/ffa.db --baseline build/baseline.db --out build/validation.json
+```
+
 1. **Collecte** (ordinateur, sur athle.fr) : ouvrir une page « Bilans », fermer les autres onglets athle.fr, lancer `tools/ffa-collecte-bilans.js` en mode `nouvelle`. Le script efface la collecte précédente de la saison et **vérifie que la base locale est vide** ; si l'effacement est bloqué, il s'arrête sans rien collecter. Il recollecte ensuite les 8 bilans de la saison en cours. Lancer enfin le mode `export` : 4 fichiers `ffa_<distance>_2027.json.gz`, qui portent les dates de collecte (`collected_from` / `collected_to`).
 2. **Construction hors production** : placer les 4 fichiers dans `data/exports/2027/` (non versionné), puis :
    ```bash
