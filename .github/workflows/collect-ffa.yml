@@ -1,9 +1,13 @@
 name: Collecte FFA (sans publication)
 
 on:
+  push:
+    branches: [main]
+    paths: ['data/collection-request.json']
   pull_request:
     paths:
       - 'tools/collect_ffa.py'
+      - 'tools/ffa_request.py'
       - '.github/workflows/collect-ffa.yml'
   workflow_dispatch:
     inputs:
@@ -39,21 +43,30 @@ jobs:
         with:
           python-version: '3.12'
       - name: Tests du collecteur
-        run: python3 tests/test_collect_ffa.py
+        run: |
+          python3 tests/test_collect_ffa.py
+          python3 tests/test_ffa_request.py
+      - name: Lire et valider la demande
+        id: request
+        env:
+          FFA_SEASON: ${{ inputs.season }}
+          FFA_MODE: ${{ inputs.mode }}
+          RESUME_RUN: ${{ inputs.resume_run }}
+        run: python3 tools/ffa_request.py
       - name: Reprendre les pages du run précédent
-        if: github.event_name == 'workflow_dispatch' && inputs.resume_run != ''
+        if: steps.request.outputs.resume_run != ''
         uses: actions/download-artifact@v4
         with:
           github-token: ${{ github.token }}
-          run-id: ${{ inputs.resume_run }}
-          name: ffa-collection-${{ inputs.resume_run }}
+          run-id: ${{ steps.request.outputs.resume_run }}
+          name: ffa-collection-${{ steps.request.outputs.resume_run }}
           path: build/collection
       - name: Collecter et contrôler les bilans
         id: collection
         env:
-          FFA_SEASON: ${{ inputs.season }}
-          FFA_MODE: ${{ inputs.mode || 'probe' }}
-          RESUME_RUN: ${{ inputs.resume_run }}
+          FFA_SEASON: ${{ steps.request.outputs.season }}
+          FFA_MODE: ${{ steps.request.outputs.mode }}
+          RESUME_RUN: ${{ steps.request.outputs.resume_run }}
         run: |
           args=(--out build/collection --mode "$FFA_MODE")
           if [ -n "$FFA_SEASON" ]; then args+=(--season "$FFA_SEASON"); fi
@@ -95,7 +108,7 @@ jobs:
           retention-days: 14
           overwrite: true
       - name: Conserver uniquement les exports complets validés
-        if: success() && inputs.mode == 'full'
+        if: success() && steps.request.outputs.mode == 'full'
         uses: actions/upload-artifact@v4
         with:
           name: ffa-exports-${{ github.run_id }}
