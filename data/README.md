@@ -144,6 +144,28 @@ python3 tools/validate_db.py --db build/ffa.db --baseline build/baseline.db --ou
 3. **Contrôle** : `npm test` et `python3 tests/test_build_db.py`, puis comparer quelques classements de `build/ffa.db` avec la base actuelle.
 4. **Mise en service** (étape manuelle) : créer une **nouvelle** base D1, y importer `build/ffa.sql`, puis changer `database_id` dans `api/wrangler.toml` et incrémenter `CACHE_VERSION` dans `api/worker.js`, dans une même PR. L'ancienne base reste intacte pour revenir en arrière. Le workflow GitHub ne fait que déployer le Worker : il ne reconstruit pas et ne publie pas la base.
 
+## Préparer une nouvelle D1 avant publication
+
+Le workflow **Préparer la nouvelle D1 (sans bascule)** peut être lancé par le
+bouton Actions ou par une PR sur `data/d1-import-request.json` indiquant l'ID
+d'une reconstruction réussie. Il vérifie la provenance et le rapport, crée une
+base au nom unique `ffa-stage-…`, puis importe les fichiers validés. Le jeton
+Cloudflare déjà configuré doit autoriser la création et l'écriture D1 ; aucun
+droit supplémentaire n'est accordé par le workflow.
+
+L'import utilise un fichier Wrangler temporaire distinct, jamais
+`api/wrangler.toml`. La cible est contrôlée avant import et avant chaque requête :
+un identifiant ou un nom identique à la production est refusé. Les contrôles
+comparent SQLite et D1 : profils, tables dérivées, statistiques, index, têtes des
+quatre classements et recherche FTS. Le manifeste `ffa-d1-candidate-<run>` indique
+la cible, les résultats et l'empreinte du SQL. En cas d'échec, la nouvelle base
+reste disponible pour diagnostic ; aucune base n'est supprimée automatiquement.
+
+La bascule n'est **pas** exécutée par ce workflow : elle demande encore une PR
+sur le binding `DB` dans `api/wrangler.toml` et `CACHE_VERSION` dans `api/worker.js`,
+avec validation de l'utilisateur, tests de l'API puis possibilité de retour à
+l'ancien nom/identifiant. Aucun secret n'est publié dans le manifeste.
+
 ## Fin de saison : prolonger la référence
 
 Après la dernière collecte complète de la saison 2027 (en septembre 2027) :
