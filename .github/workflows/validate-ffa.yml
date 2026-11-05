@@ -1,0 +1,151 @@
+name: Reconstruire et valider FFA (hors production)
+
+on:
+  workflow_run:
+    workflows: ['Collecte FFA (sans publication)']
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      collection_run:
+        description: 'ID du run de collecte complète réussi sur main'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ffa-reconstruction
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Vérifier la provenance des exports
+        id: source
+        uses: actions/github-script@v7
+        env:
+          SOURCE_RUN: ${{ inputs.collection_run || github.event.workflow_run.id }}
+        with:
+          script: |
+            const raw = process.env.SOURCE_RUN;
+            if (!/^[1-9][0-9]*$/.test(raw)) throw new Error('ID de collecte invalide');
+            const run_id = Number(raw);
+            const repo = {...context.repo, run_id};
+            const {data: run} = await github.rest.actions.getWorkflowRun(repo);
+            if (run.conclusion !== 'success' || run.head_branch !== 'main' ||
+                run.head_repository?.full_name !== `${context.repo.owner}/${context.repo.repo}` ||
+                run.path !== '.github/workflows/collect-ffa.yml') {
+              throw new Error('Seuls les exports du collecteur réussi sur main sont acceptés');
+            }
+            const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts, repo);
+            const artifact = artifacts.find(a => a.name === `ffa-exports-${raw}` && !a.expired);
+            if (!artifact && context.eventName === 'workflow_dispatch') throw new Error('Exports complets absents ou expirés');
+            core.setOutput('ready', artifact ? 'true' : 'false');
+            core.setOutput('run', raw);
+            core.setOutput('commit', run.head_sha);
+            if (!artifact) await core.summary.addRaw('Pas d’exports complets : aucune reconstruction (essai limité).').write();
+      - name: Télécharger les quatre exports complets
+        if: steps.source.outputs.ready == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.source.outputs.run }}
+          name: ffa-exports-${{ steps.source.outputs.run }}
+          path: build/raw
+      - name: Préparer la saison et la traçabilité
+        id: inputs
+        if: steps.source.outputs.ready == 'true'
+        env:
+          SOURCE_RUN: ${{ steps.source.outputs.run }}
+          SOURCE_COMMIT: ${{ steps.source.outputs.commit }}
+        run: |
+          python3 - <<'PY'
+          import gzip, hashlib, json, os
+          from pathlib import Path
+          import sys
+          sys.path.insert(0, 'tools')
+          import build_db as b
+          paths = sorted(Path('build/raw').glob('*.json.gz'))
+          docs = [json.load(gzip.open(p, 'rt', encoding='utf-8')) for p in paths]
+          seasons = {tuple(d.get('seasons', [])) for d in docs}
+          if len(paths) != 4 or len(seasons) != 1 or len(next(iter(seasons))) != 1:
+              raise SystemExit('Quatre exports d’une même saison sont requis')
+          season = next(iter(seasons))[0]
+          if not isinstance(season, int) or not 1000 <= season <= 9999:
+              raise SystemExit('Saison invalide')
+          b.load_raw(paths, [season])
+          _, covered = b.load_reference()
+          if season in covered:
+              raise SystemExit('Saison déjà figée dans la référence')
+          root = Path('build/reconstruction'); root.mkdir(parents=True, exist_ok=True)
+          provenance = {'collection_run': os.environ['SOURCE_RUN'], 'collection_commit': os.environ['SOURCE_COMMIT'],
+                        'build_commit': os.environ['GITHUB_SHA'], 'season': season,
+                        'files': {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in paths}}
+          (root/'provenance.json').write_text(json.dumps(provenance, indent=2))
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
+              out.write(f'season={season}\n')
+          PY
+      - name: Reconstruire la référence historique puis la base actualisée
+        if: steps.source.outputs.ready == 'true'
+        env:
+          FFA_SEASON: ${{ steps.inputs.outputs.season }}
+        run: |
+          python3 tools/build_db.py --out build/baseline.db --fingerprints | tee build/reconstruction/baseline.log
+          python3 tools/build_db.py --out build/reconstruction/ffa.db --sql build/reconstruction/ffa.sql --fingerprints --season "$FFA_SEASON" --raw build/raw/*.json.gz | tee build/reconstruction/build.log
+      - name: Contrôler l’historique, les tables et les rangs
+        if: steps.source.outputs.ready == 'true'
+        run: python3 tools/validate_db.py --db build/reconstruction/ffa.db --baseline build/baseline.db --out build/reconstruction/validation.json
+      - name: Résumé de validation
+        if: always() && steps.source.outputs.ready == 'true'
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          p = Path('build/reconstruction/validation.json')
+          lines = ['## Reconstruction FFA hors production', '']
+          if p.exists():
+              r = json.loads(p.read_text())
+              lines += [f"Validation : {'OK' if r['ok'] else 'ÉCHEC'}."]
+              if 'distances' in r:
+                  lines += ['', '| Distance | Référence | Nouvelle base | Nouveaux profils | Records améliorés |', '|---|---:|---:|---:|---:|']
+                  for d in r['distances']:
+                      lines.append(f"| {d['distance']} | {d['before']} | {d['after']} | {d['new']} | {d['improved_existing']} |")
+                  lines += ['', f"Base SQLite : {r['database_bytes']/2**20:.1f} Mio. Contrôles : {len(r['checks'])}."]
+          else:
+              lines += ['Reconstruction interrompue : voir les journaux.']
+          lines += ['', 'Aucune création ou modification de D1. Aucune publication dans RP.']
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as out:
+              out.write('\n'.join(lines)+'\n')
+          PY
+      - name: Conserver les journaux et rapports
+        if: always() && steps.source.outputs.ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffa-validation-${{ github.run_id }}
+          path: |
+            build/reconstruction/*.json
+            build/reconstruction/*.log
+          retention-days: 14
+          if-no-files-found: warn
+      - name: Conserver la base et le SQL après validation uniquement
+        if: success() && steps.source.outputs.ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffa-base-validee-${{ github.run_id }}
+          path: |
+            build/reconstruction/ffa.db
+            build/reconstruction/ffa.sql
+          retention-days: 14
+          compression-level: 1
+          if-no-files-found: error

@@ -42,3 +42,5 @@ jobs:
         run: |
           python3 tests/test_collect_ffa.py
           python3 tests/test_ffa_request.py
+      - name: Tests de validation de la base
+        run: python3 tests/test_validate_db.py
