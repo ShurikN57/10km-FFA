@@ -209,9 +209,20 @@ class MergeTests(unittest.TestCase):
             self.assertEqual(stats['ambiguous'], 1)
             self.assertEqual(sorted((p['athlete_ffa_id'], p['pb_sec']) for p in out), [('N', 2600), ('R', 2700)])
 
+    def test_graphies_d_un_meme_nom_departagees_independamment_de_l_ordre(self):
+        # Même chrono, même date : le nom affiché ne dépend pas de l'ordre d'entrée.
+        variants = [perf('Éloïse MARTIN', 2400, birth=1990, sex='F'), perf('ELOISE MARTIN', 2400, birth=1990, sex='F'),
+                    perf('Eloise Martin', 2400, birth=1990, sex='F')]
+        names = set()
+        for order in itertools.permutations(variants):
+            out, stats = self.merge([], list(order))
+            self.assertEqual((len(out), stats['new']), (1, 1))
+            names.add(out[0]['full_name'])
+        self.assertEqual(len(names), 1)
+
     def test_fusion_independante_de_l_ordre_sur_donnees_aleatoires(self):
         rng = random.Random(7)
-        names = ['MARTIN Paul', 'DURAND Lea', 'MOREAU Alexandre', 'PETIT Luc', 'ADAM Chloe']
+        names = ['MARTIN Paul', 'DURAND Lea', 'DURAND Léa', 'Durand LEA', 'MOREAU Alexandre', 'PETIT Luc', 'ADAM Chloe', 'ADAM Chloé']
         ref = []
         for i in range(60):
             ref.append(profile(rng.choice(names), 2000 + rng.randrange(50) * 10, birth=1980 + rng.randrange(3),
@@ -226,8 +237,8 @@ class MergeTests(unittest.TestCase):
         ref = unique
         incoming = [perf(rng.choice(names), 1950 + rng.randrange(60) * 10, birth=1980 + rng.randrange(3), sex=rng.choice('MF'),
                          ffa_id=str(rng.randrange(60)) if rng.random() < 0.5 else None,
-                         date=f'{1 + rng.randrange(28):02d}/{1 + rng.randrange(12):02d}/26', club=rng.choice(['A', 'B', 'C']))
-                    for _ in range(120)]
+                         date=rng.choice(['01/10/26', '02/10/26']), club=rng.choice(['A', 'B']))
+                    for _ in range(200)]
         reference_out, reference_stats = self.merge(ref, incoming)
         for _ in range(30):
             shuffled = incoming[:]

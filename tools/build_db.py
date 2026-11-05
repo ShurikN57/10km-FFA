@@ -271,10 +271,13 @@ def _date_order(d):
 
 def perf_order(p):
     """Ordre total entre performances : temps, puis date, puis champs texte.
-    Rend le choix du meilleur résultat indépendant de l'ordre des fichiers."""
+    Rend le choix du meilleur résultat indépendant de l'ordre des fichiers.
+    Le nom original vient en dernier : deux graphies d'un même nom normalisé
+    (« Éloïse MARTIN » / « ELOISE MARTIN ») sont ainsi toujours départagées
+    de la même façon."""
     return (int(p['pb_sec']), _date_order(p.get('pb_date')), name_key(p.get('full_name')),
             str(p.get('athlete_ffa_id') or ''), str(p.get('club') or ''), str(p.get('league') or ''),
-            str(p.get('department') or ''), p.get('birth_year') or 0)
+            str(p.get('department') or ''), p.get('birth_year') or 0, str(p.get('full_name') or ''))
 
 
 def merge(profiles, perfs):
@@ -382,7 +385,7 @@ def merge(profiles, perfs):
             else:
                 stats['unchanged'] += 1
         new_profiles.sort(key=lambda p: (name_key(p['full_name']), p.get('birth_year') or 0, p.get('sex') or '',
-                                         str(p.get('athlete_ffa_id') or ''), int(p['pb_sec'])))
+                                         str(p.get('athlete_ffa_id') or ''), perf_order(p)))
         out[key] = plist + new_profiles
     return out, stats
 
