@@ -50,6 +50,8 @@ DISTANCE_LABEL = {key: label for key, _, label in DISTANCES}
 # monde sur route (12'49'', 26'24'', 57'30'', 2h00'35''). Aucun profil de la
 # référence n'est concerné.
 MIN_PB = {'5k': 12 * 60, '10k': 25 * 60, 'semi': 55 * 60, 'marathon': 115 * 60}
+RANK_SEASON_BEFORE = 2026
+RANK_SEASON_AFTER = 2027
 
 # Catégories FFA : âge atteint pendant l'année de fin de saison.
 CATEGORY_AGES = [
@@ -87,6 +89,18 @@ REFERENCE_COLUMNS = ['full_name', 'birth_year', 'sex', 'pb_sec', 'pb_date', 'clu
 
 class InputError(Exception):
     """Entrée invalide ou incomplète : aucune base n'est produite."""
+
+
+def rank_seasons_for(season, before=None, after=None):
+    """Refuse une nouvelle saison si ses catégories n'ont pas été préparées."""
+    before = RANK_SEASON_BEFORE if before is None else before
+    after = RANK_SEASON_AFTER if after is None else after
+    if after != before + 1:
+        raise InputError('Les deux saisons de catégories doivent être consécutives.')
+    if int(season) > after:
+        raise InputError(f'Saison {season} plus récente que les catégories préparées ({before}/{after}) : '
+                         'adapter les saisons de classement avant de reconstruire.')
+    return before, after
 
 
 def load_reference(directory=REFERENCE_DIR):
@@ -482,7 +496,7 @@ def build_derived(db, season_before, season_after):
     ''')
 
 
-def build(out, profiles, season_before=2026, season_after=2027):
+def build(out, profiles, season_before=RANK_SEASON_BEFORE, season_after=RANK_SEASON_AFTER):
     """Construit la base SQLite complète à partir des profils."""
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -573,8 +587,8 @@ def main(argv=None):
     ap.add_argument('--raw', nargs='*', default=[], help='exports bruts V3 à fusionner (4 fichiers, un par distance)')
     ap.add_argument('--season', type=int, action='append', default=[],
                     help='saison attendue dans les exports (obligatoire avec --raw ; répétable)')
-    ap.add_argument('--season-before', type=int, default=2026, help='saison des rangs « avant septembre »')
-    ap.add_argument('--season-after', type=int, default=2027, help='saison des rangs « après septembre »')
+    ap.add_argument('--season-before', type=int, default=RANK_SEASON_BEFORE, help='saison des rangs « avant septembre »')
+    ap.add_argument('--season-after', type=int, default=RANK_SEASON_AFTER, help='saison des rangs « après septembre »')
     ap.add_argument('--sql', help='écrit aussi le SQL complet pour une nouvelle base D1')
     ap.add_argument('--write-reference', metavar='DOSSIER',
                     help='écrit la référence prolongée (référence + saisons fusionnées) : fin de saison uniquement')
@@ -592,6 +606,8 @@ def main(argv=None):
             overlap = sorted(set(args.season) & set(ref_seasons))
             if overlap:
                 raise InputError(f'Saison(s) {overlap} déjà dans la référence : la fusionner à nouveau est refusé.')
+            for season in args.season:
+                rank_seasons_for(season, args.season_before, args.season_after)
             perfs, report = load_raw(args.raw, args.season)
             for name, dist, n in report['files']:
                 print(f'  {name} : {dist}, {n:,} performances')

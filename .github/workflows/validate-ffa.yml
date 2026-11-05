@@ -88,24 +88,32 @@ jobs:
           _, covered = b.load_reference()
           if season in covered:
               raise SystemExit('Saison déjà figée dans la référence')
+          before, after = b.rank_seasons_for(season)
           root = Path('build/reconstruction'); root.mkdir(parents=True, exist_ok=True)
           provenance = {'collection_run': os.environ['SOURCE_RUN'], 'collection_commit': os.environ['SOURCE_COMMIT'],
                         'build_commit': os.environ['GITHUB_SHA'], 'season': season,
+                        'rank_season_before': before, 'rank_season_after': after,
                         'files': {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in paths}}
           (root/'provenance.json').write_text(json.dumps(provenance, indent=2))
           with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
               out.write(f'season={season}\n')
+              out.write(f'before={before}\nafter={after}\n')
           PY
       - name: Reconstruire la référence historique puis la base actualisée
         if: steps.source.outputs.ready == 'true'
         env:
           FFA_SEASON: ${{ steps.inputs.outputs.season }}
+          RANK_BEFORE: ${{ steps.inputs.outputs.before }}
+          RANK_AFTER: ${{ steps.inputs.outputs.after }}
         run: |
-          python3 tools/build_db.py --out build/baseline.db --fingerprints | tee build/reconstruction/baseline.log
-          python3 tools/build_db.py --out build/reconstruction/ffa.db --sql build/reconstruction/ffa.sql --fingerprints --season "$FFA_SEASON" --raw build/raw/*.json.gz | tee build/reconstruction/build.log
+          python3 tools/build_db.py --out build/baseline.db --fingerprints --season-before "$RANK_BEFORE" --season-after "$RANK_AFTER" | tee build/reconstruction/baseline.log
+          python3 tools/build_db.py --out build/reconstruction/ffa.db --sql build/reconstruction/ffa.sql --fingerprints --season-before "$RANK_BEFORE" --season-after "$RANK_AFTER" --season "$FFA_SEASON" --raw build/raw/*.json.gz | tee build/reconstruction/build.log
       - name: Contrôler l’historique, les tables et les rangs
         if: steps.source.outputs.ready == 'true'
-        run: python3 tools/validate_db.py --db build/reconstruction/ffa.db --baseline build/baseline.db --sql build/reconstruction/ffa.sql --out build/reconstruction/validation.json
+        env:
+          RANK_BEFORE: ${{ steps.inputs.outputs.before }}
+          RANK_AFTER: ${{ steps.inputs.outputs.after }}
+        run: python3 tools/validate_db.py --db build/reconstruction/ffa.db --baseline build/baseline.db --sql build/reconstruction/ffa.sql --season-before "$RANK_BEFORE" --season-after "$RANK_AFTER" --out build/reconstruction/validation.json
       - name: Résumé de validation
         if: always() && steps.source.outputs.ready == 'true'
         run: |

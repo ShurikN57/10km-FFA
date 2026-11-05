@@ -11,7 +11,7 @@ import sqlite3
 import sys
 import time
 
-from build_db import CATEGORY_AGES, DISTANCES, FRENCH_SQL, category
+from build_db import CATEGORY_AGES, DISTANCES, FRENCH_SQL, RANK_SEASON_BEFORE, RANK_SEASON_AFTER, category
 
 # Limite par instruction, documentée par Cloudflare (vérifiée le 05/11/2026) :
 # https://developers.cloudflare.com/d1/platform/limits/
@@ -22,7 +22,7 @@ def open_readonly(path):
     return sqlite3.connect(Path(path).resolve().as_uri() + '?mode=ro', uri=True)
 
 
-def validate(database, baseline, season_before=2026, season_after=2027, sql_path=None):
+def validate(database, baseline, season_before=RANK_SEASON_BEFORE, season_after=RANK_SEASON_AFTER, sql_path=None):
     started = time.monotonic()
     report = {'created_at': datetime.now(timezone.utc).isoformat(), 'checks': [],
               'database_bytes': Path(database).stat().st_size,
@@ -146,8 +146,8 @@ def main(argv=None):
     parser.add_argument('--baseline', required=True)
     parser.add_argument('--out', required=True)
     parser.add_argument('--sql', help='contrôle aussi la taille des instructions SQL pour D1')
-    parser.add_argument('--season-before', type=int, default=2026)
-    parser.add_argument('--season-after', type=int, default=2027)
+    parser.add_argument('--season-before', type=int, default=RANK_SEASON_BEFORE)
+    parser.add_argument('--season-after', type=int, default=RANK_SEASON_AFTER)
     args = parser.parse_args(argv)
     try:
         report = validate(args.db, args.baseline, args.season_before, args.season_after, args.sql)

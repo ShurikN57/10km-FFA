@@ -69,6 +69,18 @@ class ParseTests(unittest.TestCase):
         self.assertEqual(b.category(None, 2027), None)
 
 
+class CategorySeasonTests(unittest.TestCase):
+    def test_future_season_requires_prepared_categories(self):
+        self.assertEqual(b.rank_seasons_for(2027, 2026, 2027), (2026, 2027))
+        with self.assertRaises(b.InputError):
+            b.rank_seasons_for(2028, 2026, 2027)
+        self.assertEqual(b.rank_seasons_for(2028, 2027, 2028), (2027, 2028))
+
+    def test_nonconsecutive_category_seasons_rejected(self):
+        with self.assertRaises(b.InputError):
+            b.rank_seasons_for(2027, 2025, 2027)
+
+
 class RawExportValidationTests(unittest.TestCase):
     def check(self, mutate=None, seasons=(2027,), expect=None, paths_filter=None):
         with tempfile.TemporaryDirectory() as d:
@@ -256,6 +268,16 @@ class MergeTests(unittest.TestCase):
 
 
 class ReferenceTests(unittest.TestCase):
+    def test_future_season_cli_does_not_produce_database(self):
+        with tempfile.TemporaryDirectory() as d:
+            ref = Path(d) / 'ref'
+            b.write_reference(empty(), [2024, 2025, 2026], ref, 'test')
+            exports = write_exports(d, seasons=(2028,))
+            out = Path(d) / 'future.db'
+            code = b.main(['--out', str(out), '--reference', str(ref), '--season', '2028', '--raw', *map(str, exports)])
+            self.assertEqual(code, 2)
+            self.assertFalse(out.exists())
+
     def test_ecriture_relecture_et_prolongation(self):
         prof = empty()
         prof['10k'] = [profile('DUPONT Jean', 2100, ffa_id='1', league='I-F', dept='077')]
