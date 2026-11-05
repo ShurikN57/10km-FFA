@@ -14,7 +14,7 @@ import re
 import sys
 import time
 from datetime import datetime, timezone
-from urllib.parse import urlencode
+from urllib.parse import parse_qs, urlencode, urlsplit
 from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 
@@ -48,6 +48,7 @@ class BilansParser(HTMLParser):
         self.cell = None
         self.rows = []
         self.text = []
+        self.selected_query = None
 
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
@@ -56,6 +57,10 @@ class BilansParser(HTMLParser):
                 self.table_depth += 1
         if self.table_depth != 1:
             return
+        if 'selected' in attrs.get('class', '').split() and attrs.get('data-url'):
+            query = parse_qs(urlsplit(attrs['data-url']).query)
+            if 'frmposition' in query and self.selected_query is None:
+                self.selected_query = query
         if tag == 'tr':
             self.cells = []
         elif tag == 'td' and self.cells is not None:
@@ -87,7 +92,7 @@ class BilansParser(HTMLParser):
             self.cells = None
 
 
-def parse_page(html, page, season=None, sex=None):
+def parse_page(html, page, season=None, sex=None, distance=None):
     parser = BilansParser()
     parser.feed(html)
     text = clean(' '.join(parser.text))
@@ -95,6 +100,12 @@ def parse_page(html, page, season=None, sex=None):
         heading = re.search(r'\b(\d{4})\s*\|\s*[^|]+\|\s*([MF])\b', text)
         if not heading or (int(heading[1]), heading[2]) != (season, sex):
             raise InputError('Saison ou sexe du bilan reçu différents de la demande.')
+    if distance is not None:
+        expected = {'frmannee': str(season), 'frmepreuve': EVENTS[distance],
+                    'frmsexe': sex, 'frmposition': str(page)}
+        query = parser.selected_query or {}
+        if any(query.get(k) != [v] for k, v in expected.items()):
+            raise InputError('Le sélecteur FFA ne correspond pas au bilan demandé (distance, saison, sexe ou page).')
     pagination = re.search(r'Page\s*>\s*(\d+)\s*/\s*(\d+)\s*<', text)
     count = re.search(r'([\d ]+)\s+résultats?\b', text, re.I)
     if not pagination or not count:
@@ -138,7 +149,7 @@ def fetch_page(season, distance, sex, page, delay=1.0):
                 if response.url.split('?')[0] != url.split('?')[0]:
                     raise InputError('Redirection FFA inattendue : collecte arrêtée.')
                 html = response.read().decode(response.headers.get_content_charset() or 'utf-8')
-            result = parse_page(html, page, season, sex)
+            result = parse_page(html, page, season, sex, distance)
             result.update(collected_at=now(), source_url=url)
             return result
         except InputError:

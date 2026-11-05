@@ -14,7 +14,7 @@ def html(page=0, total=2, count=2):
     # Même structure que les bilans : balises i/b mal fermées, détails mobiles
     # dans une table imbriquée, et options de pagination après la page courante.
     return f'''<table id="ctnBilans"><tr><td>Page&nbsp;&gt;&nbsp;{page+1:03}/{total:03}&nbsp;&lt;
-    <div>Page &gt; 001/{total} &lt;</div>{count} résultats</td></tr>
+    <div class="select-option selected" data-url="/bases/liste.aspx?frmannee=2027&amp;frmepreuve=261&amp;frmsexe=F&amp;frmposition={page}">Page &gt; 001/{total} &lt;</div>{count} résultats</td></tr>
     <tr><td>2027 | 10 Km Route | F</td></tr>
     <tr><td>{page+1}</td><td><i><b>40'00''</i></b> (RP)</td>
     <td><a href="/athletes/A{page}/bilans">MARTIN Éloïse</a></td>
@@ -50,6 +50,11 @@ class ParsingTests(unittest.TestCase):
         for season, sex in [(2026, 'F'), (2027, 'M')]:
             with self.assertRaises(c.InputError):
                 c.parse_page(html(), 0, season, sex)
+
+    def test_ignored_distance_filter_rejected(self):
+        c.parse_page(html(), 0, 2027, 'F', '10k')
+        with self.assertRaises(c.InputError):
+            c.parse_page(html(), 0, 2027, 'F', '5k')
 
     def test_blocked_or_changed_format_rejected(self):
         for source in ['<html>captcha</html>', '<table id="ctnBilans">Page > 1/1 < 1 résultat</table>']:
